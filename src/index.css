@@ -19,7 +19,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  @theme {
+  :root {
     --color-ink: #e7ece3;
     --color-ink-soft: #9caa9d;
     --color-paper: #12170f;
