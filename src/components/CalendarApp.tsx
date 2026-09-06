@@ -1,0 +1,504 @@
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import type { CalendarEvent, EventKind } from '@/lib/database.types'
+import { CATEGORIES } from '@/lib/categories'
+import { buildICS, downloadICS, slugify } from '@/lib/calendarExport'
+
+const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
+
+const KIND_META: Record<EventKind, { label: string; plural: string; dot: string; text: string; border: string; chipBg: string }> = {
+  entrenamiento: { label: 'Entrenamiento', plural: 'Entrenamientos', dot: 'bg-ink-soft', text: 'text-ink-soft', border: 'border-l-ink-soft', chipBg: 'bg-line' },
+  partido: { label: 'Partido', plural: 'Partidos', dot: 'bg-partido', text: 'text-partido', border: 'border-l-partido', chipBg: 'bg-partido-soft' },
+  viaje: { label: 'Viaje', plural: 'Viajes', dot: 'bg-viaje', text: 'text-viaje', border: 'border-l-viaje', chipBg: 'bg-viaje-soft' },
+}
+
+function todayISO() {
+  const d = new Date()
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+}
+function addDaysISO(iso: string, days: number) {
+  const d = new Date(iso + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+}
+function capital(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+function humanDay(iso: string) {
+  const d = new Date(iso + 'T00:00:00')
+  const t = new Date(todayISO() + 'T00:00:00')
+  const diff = Math.round((d.getTime() - t.getTime()) / 86400000)
+  const full = capital(d.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' }))
+  if (diff === 0) return `Hoy · ${full}`
+  if (diff === 1) return `Mañana · ${full}`
+  return full
+}
+
+interface ModalState {
+  kind: EventKind
+  editing: CalendarEvent | null
+}
+
+function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; userId: string; onClose: () => void; onSaved: () => void }) {
+  const ev = state.editing
+  const isViaje = state.kind === 'viaje'
+  const isAllDay = isViaje
+
+  const [title, setTitle] = useState(ev?.title ?? '')
+  const [category, setCategory] = useState(ev?.category ?? '')
+  const [date, setDate] = useState(ev?.date ?? todayISO())
+  const [endDate, setEndDate] = useState(ev?.end_date ?? '')
+  const [startTime, setStartTime] = useState(ev?.start_time?.slice(0, 5) ?? (isAllDay ? '' : '18:00'))
+  const [endTime] = useState(ev?.end_time?.slice(0, 5) ?? '')
+  const [location, setLocation] = useState(ev?.location ?? '')
+  const [attending, setAttending] = useState(ev?.attending ?? true)
+  const [notes, setNotes] = useState(ev?.notes ?? '')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    const payload = {
+      user_id: userId,
+      kind: state.kind,
+      title: title.trim() || (isViaje ? 'Viaje sin título' : 'Evento sin título'),
+      category: category || null,
+      date,
+      end_date: isAllDay ? endDate || date : null,
+      start_time: isAllDay ? null : startTime || null,
+      end_time: isAllDay ? null : endTime || null,
+      location: location.trim() || null,
+      attending: isViaje ? true : attending,
+      notes: notes.trim() || null,
+    }
+    if (ev) {
+      await supabase.from('events').update(payload).eq('id', ev.id)
+    } else {
+      await supabase.from('events').insert(payload)
+    }
+    setSaving(false)
+    onSaved()
+    onClose()
+  }
+
+  async function handleDelete() {
+    if (!ev) return
+    if (!confirm('¿Eliminar este evento?')) return
+    await supabase.from('events').delete().eq('id', ev.id)
+    onSaved()
+    onClose()
+  }
+
+  const meta = KIND_META[state.kind]
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4 py-10" onClick={onClose}>
+      <div className="mx-auto w-full max-w-md rounded-2xl border border-line bg-paper-raised p-5 shadow-2xl sm:p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className={`font-display text-xs font-bold uppercase tracking-widest ${meta.text}`}>
+            {ev ? 'Editar' : 'Nuevo'} {meta.label.toLowerCase()}
+          </h2>
+          <button type="button" onClick={onClose} className="rounded-md px-1.5 py-0.5 text-ink-soft hover:bg-line">
+            ✕
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+            {isViaje ? 'Título' : 'Título / rival'}
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={isViaje ? 'p. ej. Gira Regional Sub-16' : state.kind === 'partido' ? 'p. ej. vs. Universidad de Chile' : 'p. ej. MC13-S2'}
+              className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            />
+          </label>
+
+          {isAllDay ? (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Fecha inicio
+                <input
+                  type="date"
+                  required
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Fecha fin
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                />
+              </label>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Fecha
+                <input
+                  type="date"
+                  required
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Hora
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                />
+              </label>
+            </div>
+          )}
+
+          <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+            {isViaje ? 'Destino' : 'Lugar'}
+            <input
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+            Categoría
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            >
+              <option value="">Sin categoría</option>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {!isViaje && (
+            <div className="flex flex-col gap-1.5 text-xs font-semibold text-ink-soft">
+              ¿Vas a asistir?
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAttending(true)}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-xs font-bold ${attending ? 'border-accent bg-accent-soft text-accent' : 'border-line text-ink-soft'}`}
+                >
+                  Sí, asisto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAttending(false)}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-xs font-bold ${!attending ? 'border-ink-soft bg-line text-ink' : 'border-line text-ink-soft'}`}
+                >
+                  No asisto
+                </button>
+              </div>
+            </div>
+          )}
+
+          <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+            Notas
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            />
+          </label>
+
+          <div className="mt-2 flex items-center justify-between">
+            {ev ? (
+              <button type="button" onClick={handleDelete} className="text-xs font-bold text-partido hover:underline">
+                Eliminar
+              </button>
+            ) : (
+              <span />
+            )}
+            <button type="submit" disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white disabled:opacity-60">
+              {saving ? 'Guardando…' : ev ? 'Guardar cambios' : 'Añadir'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+export default function CalendarApp({ userId, userEmail }: { userId: string; userEmail: string }) {
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filterKind, setFilterKind] = useState<'all' | EventKind>('all')
+  const [onlyAttending, setOnlyAttending] = useState(true)
+  const [showPast, setShowPast] = useState(false)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [viewMonth, setViewMonth] = useState(() => {
+    const d = new Date()
+    return new Date(d.getFullYear(), d.getMonth(), 1)
+  })
+  const [modal, setModal] = useState<ModalState | null>(null)
+
+  async function loadEvents() {
+    setLoading(true)
+    const { data } = await supabase.from('events').select('*').order('date', { ascending: true })
+    setEvents((data as CalendarEvent[]) ?? [])
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    loadEvents()
+  }, [])
+
+  const today = todayISO()
+
+  const visible = useMemo(() => {
+    return events
+      .filter((ev) => {
+        if (filterKind !== 'all' && ev.kind !== filterKind) return false
+        if (onlyAttending && !ev.attending) return false
+        if (selectedDate) {
+          const inRange = selectedDate >= ev.date && selectedDate <= (ev.end_date ?? ev.date)
+          if (!inRange) return false
+        } else if (!showPast) {
+          const lastDay = ev.end_date ?? ev.date
+          if (lastDay < today) return false
+        }
+        return true
+      })
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1
+        const ta = a.start_time ?? '00:00'
+        const tb = b.start_time ?? '00:00'
+        return ta < tb ? -1 : ta > tb ? 1 : 0
+      })
+  }, [events, filterKind, onlyAttending, selectedDate, showPast, today])
+
+  const byDate = useMemo(() => {
+    const map: Record<string, EventKind[]> = {}
+    for (const ev of events) {
+      if (onlyAttending && !ev.attending) continue
+      let d = ev.date
+      const end = ev.end_date ?? ev.date
+      while (d <= end) {
+        if (!map[d]) map[d] = []
+        if (!map[d].includes(ev.kind)) map[d].push(ev.kind)
+        d = addDaysISO(d, 1)
+      }
+    }
+    return map
+  }, [events, onlyAttending])
+
+  const groups = useMemo(() => {
+    const out: { date: string; items: CalendarEvent[] }[] = []
+    for (const ev of visible) {
+      const last = out[out.length - 1]
+      if (last && last.date === ev.date) last.items.push(ev)
+      else out.push({ date: ev.date, items: [ev] })
+    }
+    return out
+  }, [visible])
+
+  const y = viewMonth.getFullYear()
+  const m = viewMonth.getMonth()
+  const first = new Date(y, m, 1)
+  const startOffset = (first.getDay() + 6) % 7
+  const daysInMonth = new Date(y, m + 1, 0).getDate()
+
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="font-display text-[11px] font-bold uppercase tracking-widest text-ink-soft">Calendario</p>
+          <h1 className="font-display text-2xl font-extrabold text-ink">Entrenamientos, partidos y viajes</h1>
+        </div>
+        <button type="button" onClick={() => supabase.auth.signOut()} className="text-xs font-semibold text-ink-soft hover:text-ink">
+          Cerrar sesión ({userEmail})
+        </button>
+      </header>
+
+      <div className="mb-6 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setModal({ kind: 'partido', editing: null })}
+          className="rounded-lg bg-partido px-3 py-2 text-xs font-bold text-white"
+        >
+          + Partido
+        </button>
+        <button
+          type="button"
+          onClick={() => setModal({ kind: 'viaje', editing: null })}
+          className="rounded-lg bg-viaje px-3 py-2 text-xs font-bold text-white"
+        >
+          + Viaje
+        </button>
+        <button
+          type="button"
+          onClick={() => setModal({ kind: 'entrenamiento', editing: null })}
+          className="rounded-lg border border-line bg-paper-raised px-3 py-2 text-xs font-bold text-ink-soft"
+        >
+          + Entrenamiento
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
+        <div className="flex flex-col gap-4">
+          <div className="rounded-2xl border border-line bg-paper-raised p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <button type="button" onClick={() => setViewMonth(new Date(y, m - 1, 1))} className="rounded-md border border-line px-2 py-0.5 text-ink-soft">
+                ‹
+              </button>
+              <span className="font-display text-xs font-bold uppercase tracking-wide text-ink">
+                {capital(viewMonth.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }))}
+              </span>
+              <button type="button" onClick={() => setViewMonth(new Date(y, m + 1, 1))} className="rounded-md border border-line px-2 py-0.5 text-ink-soft">
+                ›
+              </button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {DOW.map((d) => (
+                <div key={d} className="text-[10px] font-bold uppercase text-ink-soft">
+                  {d}
+                </div>
+              ))}
+              {Array.from({ length: startOffset }).map((_, i) => (
+                <div key={`pad-${i}`} />
+              ))}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1
+                const iso = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0')
+                const kinds = byDate[iso] ?? []
+                const isToday = iso === today
+                const isSelected = iso === selectedDate
+                return (
+                  <button
+                    type="button"
+                    key={iso}
+                    onClick={() => setSelectedDate(selectedDate === iso ? null : iso)}
+                    className={`relative rounded-lg py-1.5 text-[12px] font-medium text-ink hover:bg-line ${isToday ? 'ring-1 ring-accent' : ''} ${isSelected ? 'bg-line' : ''}`}
+                  >
+                    {day}
+                    {kinds.length > 0 && (
+                      <span className="absolute bottom-0.5 left-1/2 flex -translate-x-1/2 gap-0.5">
+                        {kinds.map((k) => (
+                          <span key={k} className={`h-1 w-1 rounded-full ${KIND_META[k].dot}`} />
+                        ))}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 rounded-2xl border border-line bg-paper-raised p-4 shadow-sm">
+            <span className="font-display text-[11px] font-bold uppercase tracking-widest text-ink-soft">Filtrar</span>
+            <div className="flex flex-wrap gap-1.5">
+              {(['all', 'entrenamiento', 'partido', 'viaje'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setFilterKind(k)}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+                    filterKind === k ? 'border-ink bg-ink text-paper' : 'border-line text-ink-soft'
+                  }`}
+                >
+                  {k === 'all' ? 'Todos' : KIND_META[k].plural}
+                </button>
+              ))}
+            </div>
+            <label className="mt-1 flex items-center gap-2 text-xs text-ink-soft">
+              <input type="checkbox" checked={onlyAttending} onChange={(e) => setOnlyAttending(e.target.checked)} />
+              Solo a los que asisto
+            </label>
+            <label className="flex items-center gap-2 text-xs text-ink-soft">
+              <input type="checkbox" checked={showPast} onChange={(e) => setShowPast(e.target.checked)} disabled={!!selectedDate} />
+              Ver eventos pasados
+            </label>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => visible.length > 0 && downloadICS('calendario.ics', buildICS(visible))}
+            disabled={visible.length === 0}
+            className="rounded-2xl border border-line bg-paper-raised px-4 py-3 text-xs font-bold text-ink-soft shadow-sm disabled:opacity-50"
+          >
+            ⭳ Exportar vista (.ics)
+          </button>
+          <p className="px-1 text-[11px] leading-relaxed text-ink-soft">
+            En iPhone/Mac: abre el archivo descargado y elige "Añadir a Calendario". Se exportan los eventos que ves en la lista.
+          </p>
+        </div>
+
+        <div>
+          {loading && <p className="text-sm text-ink-soft">Cargando…</p>}
+          {!loading && selectedDate && (
+            <button type="button" onClick={() => setSelectedDate(null)} className="mb-3 text-xs font-bold text-accent hover:underline">
+              ← Ver toda la agenda
+            </button>
+          )}
+          {!loading && groups.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-line py-16 text-center text-sm text-ink-soft">
+              {events.length === 0 ? 'Aún no hay entrenamientos, partidos ni viajes agendados.' : 'Nada que coincida con este filtro.'}
+            </div>
+          )}
+          {groups.map((g) => (
+            <div key={g.date} className="mb-5">
+              <h2 className="mb-2 font-display text-xs font-bold uppercase tracking-widest text-ink-soft">{humanDay(g.date)}</h2>
+              <div className="flex flex-col gap-2">
+                {g.items.map((ev) => {
+                  const meta = KIND_META[ev.kind]
+                  const timeLabel = !ev.start_time
+                    ? ev.end_date && ev.end_date !== ev.date
+                      ? `${new Date(ev.date + 'T00:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })} – ${new Date(ev.end_date + 'T00:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}`
+                      : 'Todo el día'
+                    : ev.start_time.slice(0, 5)
+                  return (
+                    <div
+                      key={ev.id}
+                      className={`flex gap-3 rounded-xl border border-line border-l-4 bg-paper-raised p-3 shadow-sm ${meta.border} ${!ev.attending ? 'opacity-60' : ''}`}
+                    >
+                      <div className="w-16 shrink-0 pt-0.5 text-xs font-semibold text-ink-soft">{timeLabel}</div>
+                      <div className="min-w-0 flex-1">
+                        <span className={`text-[10px] font-bold uppercase tracking-widest ${meta.text}`}>
+                          {meta.label}
+                          {!ev.attending && ' · no asisto'}
+                        </span>
+                        <p className="truncate text-sm font-bold text-ink">{ev.title}</p>
+                        {(ev.location || ev.category) && (
+                          <p className="text-xs text-ink-soft">{[ev.location, ev.category].filter(Boolean).join(' · ')}</p>
+                        )}
+                        <div className="mt-1.5 flex gap-3 text-[11px] font-bold">
+                          <button type="button" onClick={() => setModal({ kind: ev.kind, editing: ev })} className="text-ink-soft hover:underline">
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => downloadICS(`${slugify(ev.title)}.ics`, buildICS([ev]))}
+                            className="text-ink-soft hover:underline"
+                          >
+                            Exportar .ics
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {modal && <EventModal state={modal} userId={userId} onClose={() => setModal(null)} onSaved={loadEvents} />}
+    </div>
+  )
+}
