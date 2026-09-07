@@ -113,33 +113,41 @@ export async function parseCronogramaImage(file: File, year = new Date().getFull
   }
   const date = `${year}-${String(+dayMatch[3]).padStart(2, '0')}-${String(+dayMatch[2]).padStart(2, '0')}`
 
-  const horaHeader = words.find((w) => /^HORA$/i.test(w.text))
-  const lugarHeader = words.find((w) => /LUGAR/i.test(w.text))
-  const actividadHeader = words.find((w) => /ACTIVIDAD|CTIVIDAD/i.test(stripAccents(w.text).toUpperCase()))
-
-  if (!horaHeader || !lugarHeader || !actividadHeader) {
-    throw new Error('No se reconocieron las columnas de la tabla (Hora / Actividad / Lugar).')
-  }
-
-  const col1End = (horaHeader.x + actividadHeader.x) / 2
-  const col2End = (actividadHeader.x + lugarHeader.x) / 2
-  const headerY = Math.max(horaHeader.y, lugarHeader.y, actividadHeader.y)
-
-  const bodyWords = words.filter((w) => w.y > headerY + 10)
-  const rows = groupRows(bodyWords)
+  // Column headers ("HORA"/"ACTIVIDAD"/"LUGAR") are exactly the kind of short
+  // all-caps word OCR sometimes drops, so we don't rely on finding them.
+  // Instead: any row that starts with a HH:MM token is a data row (this also
+  // doubles as the header/title-row filter), and within that row the
+  // activity/location split falls at its single largest horizontal gap —
+  // words inside one label sit close together, columns don't.
+  const rows = groupRows(words)
+  const gapThreshold = canvas.width * 0.06
 
   const items: ParsedImageItem[] = []
   for (const row of rows) {
-    const col1 = row.words.filter((w) => w.x < col1End)
-    const col2 = row.words.filter((w) => w.x >= col1End && w.x < col2End)
-    const col3 = row.words.filter((w) => w.x >= col2End)
-    const timeText = joinWords(col1)
-    const timeMatch = timeText.match(/(\d{1,2}:\d{2})/)
+    if (row.words.length === 0) continue
+    const timeMatch = row.words[0].text.match(/^(\d{1,2}:\d{2})$/)
     if (!timeMatch) continue
-    const label = joinWords(col2)
+    const rest = row.words.slice(1)
+    if (rest.length === 0) continue
+
+    let splitAt = rest.length
+    let biggestGap = 0
+    for (let i = 1; i < rest.length; i++) {
+      const gap = rest[i].x - rest[i - 1].x
+      if (gap > biggestGap) {
+        biggestGap = gap
+        splitAt = i
+      }
+    }
+    const hasLocationColumn = biggestGap > gapThreshold
+    const label = joinWords(hasLocationColumn ? rest.slice(0, splitAt) : rest)
     if (!label) continue
-    const location = joinWords(col3) || null
+    const location = hasLocationColumn ? joinWords(rest.slice(splitAt)) || null : null
     items.push({ time: timeMatch[1], label, location, kind: guessKind(label) })
+  }
+
+  if (items.length === 0) {
+    throw new Error('No se reconoció ninguna fila con hora en la imagen.')
   }
 
   return { date, items }
