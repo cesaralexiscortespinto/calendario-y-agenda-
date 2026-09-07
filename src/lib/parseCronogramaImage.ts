@@ -91,9 +91,15 @@ function joinWords(words: OcrWord[]): string {
 
 export async function parseCronogramaImage(file: File, year = new Date().getFullYear()): Promise<ParsedCronogramaImage> {
   const canvas = await invertDarkRows(file)
+  // Hand Tesseract a plain image blob rather than the canvas element itself —
+  // the worker communicates over postMessage, and canvas elements aren't
+  // reliably structured-cloneable across browsers (notably Safari/iOS).
+  const blob: Blob = await new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('No se pudo procesar la imagen.'))), 'image/png'),
+  )
 
   const worker = await createWorker('spa')
-  const { data } = await worker.recognize(canvas, {}, { blocks: true })
+  const { data } = await worker.recognize(blob, {}, { blocks: true })
   await worker.terminate()
 
   const words: OcrWord[] = []
