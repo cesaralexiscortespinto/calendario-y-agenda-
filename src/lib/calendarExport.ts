@@ -19,7 +19,7 @@ function icsDate(dateStr: string): string {
 }
 
 function icsDateTime(dateStr: string, timeStr: string): string {
-  let t = timeStr.replace(':', '')
+  let t = timeStr.replace(/:/g, '')
   if (t.length === 4) t += '00'
   return dateStr.replace(/-/g, '') + 'T' + t
 }
