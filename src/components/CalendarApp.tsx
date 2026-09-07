@@ -241,6 +241,85 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
   )
 }
 
+function PasswordModal({ onClose }: { onClose: () => void }) {
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (password.length < 6) {
+      setError('La contraseña debe tener al menos 6 caracteres.')
+      return
+    }
+    if (password !== confirm) {
+      setError('Las contraseñas no coinciden.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    const { error } = await supabase.auth.updateUser({ password })
+    setSaving(false)
+    if (error) setError(error.message)
+    else setDone(true)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4 py-10" onClick={onClose}>
+      <div className="mx-auto w-full max-w-sm rounded-2xl border border-line bg-paper-raised p-5 shadow-2xl sm:p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-display text-xs font-bold uppercase tracking-widest text-ink">Configurar contraseña</h2>
+          <button type="button" onClick={onClose} className="rounded-md px-1.5 py-0.5 text-ink-soft hover:bg-line">
+            ✕
+          </button>
+        </div>
+        {done ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-ink-soft">
+              Listo. Ahora puedes entrar directo con tu correo y esta contraseña, en cualquier navegador, sin pasar por
+              el correo.
+            </p>
+            <button type="button" onClick={onClose} className="rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white">
+              Cerrar
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+              Nueva contraseña
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+              Repetir contraseña
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              />
+            </label>
+            {error && <p className="text-xs font-semibold text-partido">{error}</p>}
+            <button type="submit" disabled={saving} className="mt-1 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white disabled:opacity-60">
+              {saving ? 'Guardando…' : 'Guardar contraseña'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function CalendarApp({ userId, userEmail }: { userId: string; userEmail: string }) {
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -256,6 +335,7 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
   const [dayViewDate, setDayViewDate] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false)
 
   async function loadEvents() {
     setLoading(true)
@@ -391,9 +471,18 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
           <p className="font-display text-[11px] font-bold uppercase tracking-widest text-ink-soft">Calendario</p>
           <h1 className="font-display text-2xl font-extrabold text-ink">Entrenamientos, partidos y viajes</h1>
         </div>
-        <button type="button" onClick={() => supabase.auth.signOut()} className="text-xs font-semibold text-ink-soft hover:text-ink">
-          Cerrar sesión ({userEmail})
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setPasswordModalOpen(true)}
+            className="text-xs font-semibold text-ink-soft hover:text-ink"
+          >
+            Configurar contraseña
+          </button>
+          <button type="button" onClick={() => supabase.auth.signOut()} className="text-xs font-semibold text-ink-soft hover:text-ink">
+            Cerrar sesión ({userEmail})
+          </button>
+        </div>
       </header>
 
       <div className="mb-2 flex flex-wrap gap-2">
@@ -573,6 +662,7 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
       {dayViewDate && (
         <DayView date={dayViewDate} userId={userId} onClose={() => setDayViewDate(null)} onEventAdded={loadEvents} />
       )}
+      {passwordModalOpen && <PasswordModal onClose={() => setPasswordModalOpen(false)} />}
     </div>
   )
 }
