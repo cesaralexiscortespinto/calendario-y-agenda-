@@ -24,6 +24,7 @@ export interface ItineraryItem {
   day_date: string
   start_time: string
   label: string
+  location: string | null
   kind: EventKind | null
   added_event_id: string | null
   created_at: string

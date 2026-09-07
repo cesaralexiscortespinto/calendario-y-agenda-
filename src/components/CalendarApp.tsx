@@ -5,6 +5,7 @@ import { CATEGORIES } from '@/lib/categories'
 import { buildICS, downloadICS, slugify } from '@/lib/calendarExport'
 import { EVENT_KINDS, KIND_META as LABELS } from '@/lib/kindMeta'
 import { parseCronogramaPdf } from '@/lib/parseCronograma'
+import { parseCronogramaImage } from '@/lib/parseCronogramaImage'
 import DayView from '@/components/DayView'
 
 const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
@@ -267,32 +268,62 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
     loadEvents()
   }, [])
 
-  async function handleImportPdf(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
     setImporting(true)
     setImportError(null)
     try {
-      const parsed = await parseCronogramaPdf(file)
-      const rows = parsed.days.flatMap((day) =>
-        day.items.map((item) => ({
+      let rows: {
+        user_id: string
+        import_label: string | null
+        category: string | null
+        day_date: string
+        start_time: string
+        label: string
+        location: string | null
+        kind: EventKind | null
+      }[]
+      let firstDate: string
+
+      if (file.type === 'application/pdf') {
+        const parsed = await parseCronogramaPdf(file)
+        rows = parsed.days.flatMap((day) =>
+          day.items.map((item) => ({
+            user_id: userId,
+            import_label: parsed.title,
+            category: parsed.category,
+            day_date: day.date,
+            start_time: item.time + ':00',
+            label: item.label,
+            location: null,
+            kind: item.kind,
+          })),
+        )
+        firstDate = parsed.days[0]?.date
+      } else {
+        const parsed = await parseCronogramaImage(file)
+        rows = parsed.items.map((item) => ({
           user_id: userId,
-          import_label: parsed.title,
-          category: parsed.category,
-          day_date: day.date,
+          import_label: null,
+          category: null,
+          day_date: parsed.date,
           start_time: item.time + ':00',
           label: item.label,
+          location: item.location,
           kind: item.kind,
-        })),
-      )
-      if (rows.length === 0) throw new Error('No se encontraron actividades en el PDF.')
+        }))
+        firstDate = parsed.date
+      }
+
+      if (rows.length === 0) throw new Error('No se encontraron actividades en el archivo.')
       const { error } = await supabase.from('itinerary_items').insert(rows)
       if (error) throw error
-      setDayViewDate(parsed.days[0].date)
+      setDayViewDate(firstDate)
     } catch (err) {
       const message = err instanceof Error ? err.message : typeof err === 'object' && err && 'message' in err ? String(err.message) : null
-      setImportError(message || 'No se pudo leer el PDF.')
+      setImportError(message || 'No se pudo leer el archivo.')
     } finally {
       setImporting(false)
     }
@@ -377,8 +408,8 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
           </button>
         ))}
         <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-line bg-paper-raised px-3 py-2 text-xs font-bold text-ink-soft hover:border-accent">
-          ⭱ {importing ? 'Importando…' : 'Importar cronograma (PDF)'}
-          <input type="file" accept="application/pdf" className="hidden" disabled={importing} onChange={handleImportPdf} />
+          ⭱ {importing ? 'Importando…' : 'Importar cronograma (PDF o foto)'}
+          <input type="file" accept="application/pdf,image/*" className="hidden" disabled={importing} onChange={handleImportFile} />
         </label>
       </div>
       {importError && <p className="mb-4 text-xs font-semibold text-partido">{importError}</p>}

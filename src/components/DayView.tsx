@@ -7,6 +7,56 @@ function capital(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
+function EditableRow({ item, onSaved, onCancel }: { item: ItineraryItem; onSaved: () => void; onCancel: () => void }) {
+  const [time, setTime] = useState(item.start_time.slice(0, 5))
+  const [label, setLabel] = useState(item.label)
+  const [location, setLocation] = useState(item.location ?? '')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    setSaving(true)
+    await supabase
+      .from('itinerary_items')
+      .update({ start_time: time + ':00', label: label.trim() || item.label, location: location.trim() || null })
+      .eq('id', item.id)
+    setSaving(false)
+    onSaved()
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-paper p-2">
+      <input
+        type="time"
+        value={time}
+        onChange={(e) => setTime(e.target.value)}
+        className="w-24 rounded-md border border-line bg-paper-raised px-1.5 py-1 text-xs text-ink"
+      />
+      <input
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        className="min-w-0 flex-1 rounded-md border border-line bg-paper-raised px-1.5 py-1 text-xs text-ink"
+      />
+      <input
+        value={location}
+        onChange={(e) => setLocation(e.target.value)}
+        placeholder="Lugar"
+        className="min-w-0 flex-1 rounded-md border border-line bg-paper-raised px-1.5 py-1 text-xs text-ink"
+      />
+      <button type="button" onClick={onCancel} className="text-[10px] font-bold text-ink-soft hover:underline">
+        Cancelar
+      </button>
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={saving}
+        className="rounded-md bg-accent px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50"
+      >
+        {saving ? '…' : 'Guardar'}
+      </button>
+    </div>
+  )
+}
+
 export default function DayView({
   date,
   userId,
@@ -21,6 +71,7 @@ export default function DayView({
   const [items, setItems] = useState<ItineraryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [addingId, setAddingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -52,7 +103,7 @@ export default function DayView({
         end_date: null,
         start_time: item.start_time,
         end_time: null,
-        location: null,
+        location: item.location,
         attending: true,
         notes: null,
       })
@@ -64,6 +115,12 @@ export default function DayView({
       await load()
     }
     setAddingId(null)
+  }
+
+  async function handleDelete(item: ItineraryItem) {
+    if (!confirm('¿Quitar esta fila de la planilla? (no afecta tu calendario)')) return
+    await supabase.from('itinerary_items').delete().eq('id', item.id)
+    await load()
   }
 
   const heading = capital(new Date(date + 'T00:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' }))
@@ -91,12 +148,29 @@ export default function DayView({
 
         {!loading && items.length === 0 && (
           <div className="rounded-xl border border-dashed border-line py-10 text-center text-sm text-ink-soft">
-            No hay planilla importada para este día. Usa "Importar cronograma (PDF)" en la pantalla principal.
+            No hay planilla importada para este día. Usa "Importar cronograma (PDF o foto)" en la pantalla principal.
           </div>
         )}
 
+        <p className="mb-2 text-[11px] text-ink-soft">
+          Si el reconocimiento se equivocó en alguna fila (frecuente en fotos), corrígela con "Editar" antes de agregarla.
+        </p>
+
         <div className="flex flex-col gap-1.5">
           {items.map((item) => {
+            if (editingId === item.id) {
+              return (
+                <EditableRow
+                  key={item.id}
+                  item={item}
+                  onCancel={() => setEditingId(null)}
+                  onSaved={() => {
+                    setEditingId(null)
+                    load()
+                  }}
+                />
+              )
+            }
             const meta = item.kind ? KIND_META[item.kind] : null
             const added = !!item.added_event_id
             return (
@@ -109,23 +183,39 @@ export default function DayView({
                 }}
               >
                 <span className="w-12 shrink-0 font-mono text-xs font-semibold text-ink-soft">{item.start_time.slice(0, 5)}</span>
-                <span
-                  className="min-w-0 flex-1 truncate text-xs font-bold"
-                  style={{ color: meta ? `var(${meta.colorVar})` : 'var(--color-ink-soft)' }}
-                >
-                  {item.label}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-bold" style={{ color: meta ? `var(${meta.colorVar})` : 'var(--color-ink-soft)' }}>
+                    {item.label}
+                  </span>
+                  {item.location && <span className="block truncate text-[10px] text-ink-soft">{item.location}</span>}
+                </div>
                 {added ? (
                   <span className="shrink-0 text-[10px] font-bold text-accent">✓ En tu calendario</span>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleAdd(item)}
-                    disabled={addingId === item.id}
-                    className="shrink-0 rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-accent hover:text-accent disabled:opacity-50"
-                  >
-                    {addingId === item.id ? '…' : '+ Agregar'}
-                  </button>
+                  <div className="flex shrink-0 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(item.id)}
+                      className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-ink-soft"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(item)}
+                      className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-partido hover:text-partido"
+                    >
+                      Quitar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAdd(item)}
+                      disabled={addingId === item.id}
+                      className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-accent hover:text-accent disabled:opacity-50"
+                    >
+                      {addingId === item.id ? '…' : '+ Agregar'}
+                    </button>
+                  </div>
                 )}
               </div>
             )
