@@ -3,13 +3,19 @@ import { supabase } from '@/lib/supabase'
 import type { CalendarEvent, EventKind } from '@/lib/database.types'
 import { CATEGORIES } from '@/lib/categories'
 import { buildICS, downloadICS, slugify } from '@/lib/calendarExport'
+import { EVENT_KINDS, KIND_META as LABELS } from '@/lib/kindMeta'
+import { parseCronogramaPdf } from '@/lib/parseCronograma'
+import DayView from '@/components/DayView'
 
 const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
-const KIND_META: Record<EventKind, { label: string; plural: string; dot: string; text: string; border: string; chipBg: string }> = {
-  entrenamiento: { label: 'Entrenamiento', plural: 'Entrenamientos', dot: 'bg-ink-soft', text: 'text-ink-soft', border: 'border-l-ink-soft', chipBg: 'bg-line' },
-  partido: { label: 'Partido', plural: 'Partidos', dot: 'bg-partido', text: 'text-partido', border: 'border-l-partido', chipBg: 'bg-partido-soft' },
-  viaje: { label: 'Viaje', plural: 'Viajes', dot: 'bg-viaje', text: 'text-viaje', border: 'border-l-viaje', chipBg: 'bg-viaje-soft' },
+const KIND_META: Record<EventKind, { dot: string; text: string; border: string; chipBg: string }> = {
+  entrenamiento: { dot: 'bg-entrenamiento', text: 'text-entrenamiento', border: 'border-l-entrenamiento', chipBg: 'bg-entrenamiento-soft' },
+  charla_tecnica: { dot: 'bg-charla', text: 'text-charla', border: 'border-l-charla', chipBg: 'bg-charla-soft' },
+  tmi: { dot: 'bg-tmi', text: 'text-tmi', border: 'border-l-tmi', chipBg: 'bg-tmi-soft' },
+  partido: { dot: 'bg-partido', text: 'text-partido', border: 'border-l-partido', chipBg: 'bg-partido-soft' },
+  viaje: { dot: 'bg-viaje', text: 'text-viaje', border: 'border-l-viaje', chipBg: 'bg-viaje-soft' },
+  otros: { dot: 'bg-otros', text: 'text-otros', border: 'border-l-otros', chipBg: 'bg-otros-soft' },
 }
 
 function todayISO() {
@@ -96,7 +102,7 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
       <div className="mx-auto w-full max-w-md rounded-2xl border border-line bg-paper-raised p-5 shadow-2xl sm:p-6" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className={`font-display text-xs font-bold uppercase tracking-widest ${meta.text}`}>
-            {ev ? 'Editar' : 'Nuevo'} {meta.label.toLowerCase()}
+            {ev ? 'Editar' : 'Nuevo'} {LABELS[state.kind].label.toLowerCase()}
           </h2>
           <button type="button" onClick={onClose} className="rounded-md px-1.5 py-0.5 text-ink-soft hover:bg-line">
             ✕
@@ -246,6 +252,9 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
   const [modal, setModal] = useState<ModalState | null>(null)
+  const [dayViewDate, setDayViewDate] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
 
   async function loadEvents() {
     setLoading(true)
@@ -257,6 +266,37 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
   useEffect(() => {
     loadEvents()
   }, [])
+
+  async function handleImportPdf(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setImporting(true)
+    setImportError(null)
+    try {
+      const parsed = await parseCronogramaPdf(file)
+      const rows = parsed.days.flatMap((day) =>
+        day.items.map((item) => ({
+          user_id: userId,
+          import_label: parsed.title,
+          category: parsed.category,
+          day_date: day.date,
+          start_time: item.time + ':00',
+          label: item.label,
+          kind: item.kind,
+        })),
+      )
+      if (rows.length === 0) throw new Error('No se encontraron actividades en el PDF.')
+      const { error } = await supabase.from('itinerary_items').insert(rows)
+      if (error) throw error
+      setDayViewDate(parsed.days[0].date)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : typeof err === 'object' && err && 'message' in err ? String(err.message) : null
+      setImportError(message || 'No se pudo leer el PDF.')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   const today = todayISO()
 
@@ -325,29 +365,24 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
         </button>
       </header>
 
-      <div className="mb-6 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setModal({ kind: 'partido', editing: null })}
-          className="rounded-lg bg-partido px-3 py-2 text-xs font-bold text-white"
-        >
-          + Partido
-        </button>
-        <button
-          type="button"
-          onClick={() => setModal({ kind: 'viaje', editing: null })}
-          className="rounded-lg bg-viaje px-3 py-2 text-xs font-bold text-white"
-        >
-          + Viaje
-        </button>
-        <button
-          type="button"
-          onClick={() => setModal({ kind: 'entrenamiento', editing: null })}
-          className="rounded-lg border border-line bg-paper-raised px-3 py-2 text-xs font-bold text-ink-soft"
-        >
-          + Entrenamiento
-        </button>
+      <div className="mb-2 flex flex-wrap gap-2">
+        {EVENT_KINDS.map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setModal({ kind: k, editing: null })}
+            className="flex items-center gap-1.5 rounded-lg border border-line bg-paper-raised px-3 py-2 text-xs font-bold text-ink hover:border-ink-soft"
+          >
+            <span className={`h-2 w-2 rounded-full ${KIND_META[k].dot}`} />+ {LABELS[k].label}
+          </button>
+        ))}
+        <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-line bg-paper-raised px-3 py-2 text-xs font-bold text-ink-soft hover:border-accent">
+          ⭱ {importing ? 'Importando…' : 'Importar cronograma (PDF)'}
+          <input type="file" accept="application/pdf" className="hidden" disabled={importing} onChange={handleImportPdf} />
+        </label>
       </div>
+      {importError && <p className="mb-4 text-xs font-semibold text-partido">{importError}</p>}
+      <div className="mb-6" />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
         <div className="flex flex-col gap-4">
@@ -402,7 +437,7 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
           <div className="flex flex-col gap-2 rounded-2xl border border-line bg-paper-raised p-4 shadow-sm">
             <span className="font-display text-[11px] font-bold uppercase tracking-widest text-ink-soft">Filtrar</span>
             <div className="flex flex-wrap gap-1.5">
-              {(['all', 'entrenamiento', 'partido', 'viaje'] as const).map((k) => (
+              {(['all', ...EVENT_KINDS] as const).map((k) => (
                 <button
                   key={k}
                   type="button"
@@ -411,7 +446,7 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
                     filterKind === k ? 'border-ink bg-ink text-paper' : 'border-line text-ink-soft'
                   }`}
                 >
-                  {k === 'all' ? 'Todos' : KIND_META[k].plural}
+                  {k === 'all' ? 'Todos' : LABELS[k].plural}
                 </button>
               ))}
             </div>
@@ -441,9 +476,14 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
         <div>
           {loading && <p className="text-sm text-ink-soft">Cargando…</p>}
           {!loading && selectedDate && (
-            <button type="button" onClick={() => setSelectedDate(null)} className="mb-3 text-xs font-bold text-accent hover:underline">
-              ← Ver toda la agenda
-            </button>
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              <button type="button" onClick={() => setSelectedDate(null)} className="text-xs font-bold text-accent hover:underline">
+                ← Ver toda la agenda
+              </button>
+              <button type="button" onClick={() => setDayViewDate(selectedDate)} className="text-xs font-bold text-ink-soft hover:underline">
+                Ver planilla del día →
+              </button>
+            </div>
           )}
           {!loading && groups.length === 0 && (
             <div className="rounded-2xl border border-dashed border-line py-16 text-center text-sm text-ink-soft">
@@ -469,7 +509,7 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
                       <div className="w-16 shrink-0 pt-0.5 text-xs font-semibold text-ink-soft">{timeLabel}</div>
                       <div className="min-w-0 flex-1">
                         <span className={`text-[10px] font-bold uppercase tracking-widest ${meta.text}`}>
-                          {meta.label}
+                          {LABELS[ev.kind].label}
                           {!ev.attending && ' · no asisto'}
                         </span>
                         <p className="truncate text-sm font-bold text-ink">{ev.title}</p>
@@ -499,6 +539,9 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
       </div>
 
       {modal && <EventModal state={modal} userId={userId} onClose={() => setModal(null)} onSaved={loadEvents} />}
+      {dayViewDate && (
+        <DayView date={dayViewDate} userId={userId} onClose={() => setDayViewDate(null)} onEventAdded={loadEvents} />
+      )}
     </div>
   )
 }

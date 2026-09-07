@@ -1,10 +1,5 @@
 import type { CalendarEvent, EventKind } from './database.types'
-
-const KIND_LABEL: Record<EventKind, string> = {
-  entrenamiento: 'Entrenamiento',
-  partido: 'Partido',
-  viaje: 'Viaje',
-}
+import { KIND_META } from './kindMeta'
 
 function escapeICS(s: string | null | undefined): string {
   return String(s ?? '')
@@ -58,7 +53,7 @@ function eventToVEVENT(ev: CalendarEvent): string {
     lines.push(`DTSTART:${icsDateTime(ev.date, start)}`)
     lines.push(`DTEND:${icsDateTime(ev.date, end)}`)
   }
-  lines.push(`SUMMARY:${escapeICS(`[${KIND_LABEL[ev.kind]}] ${ev.title}`)}`)
+  lines.push(`SUMMARY:${escapeICS(`[${KIND_META[ev.kind].label}] ${ev.title}`)}`)
   if (ev.location) lines.push(`LOCATION:${escapeICS(ev.location)}`)
   const desc = [ev.category ? `Categoría: ${ev.category}` : null, ev.notes].filter(Boolean).join('\n')
   if (desc) lines.push(`DESCRIPTION:${escapeICS(desc)}`)

@@ -12,6 +12,14 @@
   --color-partido-soft: #fbeedd;
   --color-viaje: #3a5d77;
   --color-viaje-soft: #e6edf1;
+  --color-entrenamiento: #cf2a1e;
+  --color-entrenamiento-soft: #fbe6e4;
+  --color-charla: #4f9d52;
+  --color-charla-soft: #e7f4e7;
+  --color-tmi: #2f6fed;
+  --color-tmi-soft: #e5edfd;
+  --color-otros: #6b7280;
+  --color-otros-soft: #eceef0;
 
   --font-display: ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
   --font-body: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
@@ -31,6 +39,14 @@
     --color-partido-soft: #2c2416;
     --color-viaje: #89b2ce;
     --color-viaje-soft: #1a262d;
+    --color-entrenamiento: #f0675b;
+    --color-entrenamiento-soft: #2e1917;
+    --color-charla: #7cc47f;
+    --color-charla-soft: #1b2a1c;
+    --color-tmi: #6fa3ff;
+    --color-tmi-soft: #182338;
+    --color-otros: #9aa1ac;
+    --color-otros-soft: #24272c;
   }
 }
 
