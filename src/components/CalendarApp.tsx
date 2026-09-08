@@ -337,6 +337,8 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
   const [importError, setImportError] = useState<string | null>(null)
   const [passwordModalOpen, setPasswordModalOpen] = useState(false)
 
+  const [itineraryDates, setItineraryDates] = useState<Set<string>>(new Set())
+
   async function loadEvents() {
     setLoading(true)
     const { data } = await supabase.from('events').select('*').order('date', { ascending: true })
@@ -344,8 +346,14 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
     setLoading(false)
   }
 
+  async function loadItineraryDates() {
+    const { data } = await supabase.from('itinerary_items').select('day_date')
+    setItineraryDates(new Set((data ?? []).map((r) => r.day_date as string)))
+  }
+
   useEffect(() => {
     loadEvents()
+    loadItineraryDates()
   }, [])
 
   async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -398,8 +406,23 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
       }
 
       if (rows.length === 0) throw new Error('No se encontraron actividades en el archivo.')
+
+      // Re-importing the same schedule should converge to the same state, not
+      // pile up duplicates: clear out this user's not-yet-added rows for the
+      // dates being (re)imported first. Rows already added to the calendar
+      // (added_event_id set) are left alone — the real event stays put either way.
+      const dates = [...new Set(rows.map((r) => r.day_date))]
+      const { error: deleteError } = await supabase
+        .from('itinerary_items')
+        .delete()
+        .eq('user_id', userId)
+        .in('day_date', dates)
+        .is('added_event_id', null)
+      if (deleteError) throw deleteError
+
       const { error } = await supabase.from('itinerary_items').insert(rows)
       if (error) throw error
+      await loadItineraryDates()
       setDayViewDate(firstDate)
     } catch (err) {
       const message = err instanceof Error ? err.message : typeof err === 'object' && err && 'message' in err ? String(err.message) : null
@@ -533,14 +556,17 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
                 const kinds = byDate[iso] ?? []
                 const isToday = iso === today
                 const isSelected = iso === selectedDate
+                const hasItinerary = itineraryDates.has(iso)
                 return (
                   <button
                     type="button"
                     key={iso}
                     onClick={() => setSelectedDate(selectedDate === iso ? null : iso)}
+                    title={hasItinerary ? 'Tiene planilla importada' : undefined}
                     className={`relative rounded-lg py-1.5 text-[12px] font-medium text-ink hover:bg-line ${isToday ? 'ring-1 ring-accent' : ''} ${isSelected ? 'bg-line' : ''}`}
                   >
                     {day}
+                    {hasItinerary && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full border border-ink-soft" />}
                     {kinds.length > 0 && (
                       <span className="absolute bottom-0.5 left-1/2 flex -translate-x-1/2 gap-0.5">
                         {kinds.map((k) => (
@@ -660,7 +686,16 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
 
       {modal && <EventModal state={modal} userId={userId} onClose={() => setModal(null)} onSaved={loadEvents} />}
       {dayViewDate && (
-        <DayView date={dayViewDate} userId={userId} onClose={() => setDayViewDate(null)} onEventAdded={loadEvents} />
+        <DayView
+          date={dayViewDate}
+          userId={userId}
+          onClose={() => {
+            setDayViewDate(null)
+            loadItineraryDates()
+          }}
+          onEventAdded={loadEvents}
+          onNavigate={setDayViewDate}
+        />
       )}
       {passwordModalOpen && <PasswordModal onClose={() => setPasswordModalOpen(false)} />}
     </div>

@@ -7,6 +7,12 @@ function capital(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
+function addDaysISO(iso: string, days: number) {
+  const d = new Date(iso + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+}
+
 function EditableRow({ item, onSaved, onCancel }: { item: ItineraryItem; onSaved: () => void; onCancel: () => void }) {
   const [time, setTime] = useState(item.start_time.slice(0, 5))
   const [label, setLabel] = useState(item.label)
@@ -62,11 +68,13 @@ export default function DayView({
   userId,
   onClose,
   onEventAdded,
+  onNavigate,
 }: {
   date: string
   userId: string
   onClose: () => void
   onEventAdded: () => void
+  onNavigate: (date: string) => void
 }) {
   const [items, setItems] = useState<ItineraryItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -137,7 +145,23 @@ export default function DayView({
             <p className="font-display text-[11px] font-bold uppercase tracking-widest text-ink-soft">
               {importLabel ?? 'Planilla del día'}
             </p>
-            <h2 className="font-display text-lg font-extrabold text-ink">{heading}</h2>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onNavigate(addDaysISO(date, -1))}
+                className="rounded-md border border-line px-1.5 py-0.5 text-ink-soft hover:bg-line"
+              >
+                ‹
+              </button>
+              <h2 className="font-display text-lg font-extrabold text-ink">{heading}</h2>
+              <button
+                type="button"
+                onClick={() => onNavigate(addDaysISO(date, 1))}
+                className="rounded-md border border-line px-1.5 py-0.5 text-ink-soft hover:bg-line"
+              >
+                ›
+              </button>
+            </div>
           </div>
           <button type="button" onClick={onClose} className="rounded-md px-1.5 py-0.5 text-ink-soft hover:bg-line">
             ✕
