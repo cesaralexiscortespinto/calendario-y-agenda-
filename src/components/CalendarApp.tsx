@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { CalendarEvent, EventKind } from '@/lib/database.types'
+import type { CalendarEvent, EventKind, Report } from '@/lib/database.types'
 import { CATEGORIES } from '@/lib/categories'
 import { buildICS, downloadICS, slugify } from '@/lib/calendarExport'
 import { EVENT_KINDS, KIND_META as LABELS } from '@/lib/kindMeta'
 import { parseCronogramaPdf } from '@/lib/parseCronograma'
 import { parseCronogramaImage } from '@/lib/parseCronogramaImage'
 import DayView from '@/components/DayView'
+import ControlPanel from '@/components/ControlPanel'
 import Informes from '@/components/Informes'
 
 const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
@@ -362,7 +363,8 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [passwordModalOpen, setPasswordModalOpen] = useState(false)
-  const [tab, setTab] = useState<'calendario' | 'informes'>('calendario')
+  const [tab, setTab] = useState<'control' | 'agenda' | 'informes'>('agenda')
+  const [reports, setReports] = useState<Report[]>([])
 
   const [itineraryDates, setItineraryDates] = useState<Set<string>>(new Set())
 
@@ -378,9 +380,15 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
     setItineraryDates(new Set((data ?? []).map((r) => r.day_date as string)))
   }
 
+  async function loadReports() {
+    const { data } = await supabase.from('reports').select('*').order('date', { ascending: false })
+    setReports((data as Report[]) ?? [])
+  }
+
   useEffect(() => {
     loadEvents()
     loadItineraryDates()
+    loadReports()
   }, [])
 
   async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -520,7 +528,7 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
         <div>
           <p className="font-display text-[11px] font-bold uppercase tracking-widest text-ink-soft">Panel de trabajo</p>
           <h1 className="font-display text-2xl font-extrabold text-ink">
-            {tab === 'calendario' ? 'Entrenamientos, partidos y viajes' : 'Informes'}
+            {tab === 'control' ? 'Control de actividades' : tab === 'agenda' ? 'Entrenamientos, partidos y viajes' : 'Informes'}
           </h1>
         </div>
         <div className="flex items-center gap-4">
@@ -540,7 +548,8 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
       <div className="mb-6 flex gap-1 border-b border-line">
         {(
           [
-            ['calendario', 'Calendario'],
+            ['control', 'Control de Actividades'],
+            ['agenda', 'Agenda'],
             ['informes', 'Informes'],
           ] as const
         ).map(([key, label]) => (
@@ -557,9 +566,9 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
         ))}
       </div>
 
-      {tab === 'informes' ? (
-        <Informes userId={userId} events={events} />
-      ) : (
+      {tab === 'control' && <ControlPanel events={events} reports={reports} />}
+      {tab === 'informes' && <Informes userId={userId} reports={reports} onChanged={loadReports} />}
+      {tab === 'agenda' && (
         <>
       <div className="mb-2 flex flex-wrap gap-2">
         {EVENT_KINDS.map((k) => (
