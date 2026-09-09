@@ -13,7 +13,20 @@ export interface CalendarEvent {
   location: string | null
   attending: boolean
   notes: string | null
+  match_type: 'amistoso' | 'torneo' | null
   created_at: string
+}
+
+export interface Report {
+  id: string
+  user_id: string
+  title: string
+  category: string | null
+  date: string
+  content: string
+  link_url: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface ItineraryItem {

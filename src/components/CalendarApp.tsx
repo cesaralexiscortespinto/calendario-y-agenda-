@@ -7,6 +7,7 @@ import { EVENT_KINDS, KIND_META as LABELS } from '@/lib/kindMeta'
 import { parseCronogramaPdf } from '@/lib/parseCronograma'
 import { parseCronogramaImage } from '@/lib/parseCronogramaImage'
 import DayView from '@/components/DayView'
+import Informes from '@/components/Informes'
 
 const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
@@ -49,6 +50,7 @@ interface ModalState {
 function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; userId: string; onClose: () => void; onSaved: () => void }) {
   const ev = state.editing
   const isViaje = state.kind === 'viaje'
+  const isPartido = state.kind === 'partido'
   const isAllDay = isViaje
 
   const [title, setTitle] = useState(ev?.title ?? '')
@@ -59,6 +61,7 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
   const [endTime] = useState(ev?.end_time?.slice(0, 5) ?? '')
   const [location, setLocation] = useState(ev?.location ?? '')
   const [attending, setAttending] = useState(ev?.attending ?? true)
+  const [matchType, setMatchType] = useState<'amistoso' | 'torneo'>(ev?.match_type ?? 'amistoso')
   const [notes, setNotes] = useState(ev?.notes ?? '')
   const [saving, setSaving] = useState(false)
 
@@ -76,6 +79,7 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
       end_time: isAllDay ? null : endTime || null,
       location: location.trim() || null,
       attending: isViaje ? true : attending,
+      match_type: isPartido ? matchType : null,
       notes: notes.trim() || null,
     }
     if (ev) {
@@ -190,6 +194,28 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
               ))}
             </select>
           </label>
+
+          {isPartido && (
+            <div className="flex flex-col gap-1.5 text-xs font-semibold text-ink-soft">
+              Tipo de partido
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMatchType('amistoso')}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-xs font-bold ${matchType === 'amistoso' ? 'border-accent bg-accent-soft text-accent' : 'border-line text-ink-soft'}`}
+                >
+                  Amistoso
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMatchType('torneo')}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-xs font-bold ${matchType === 'torneo' ? 'border-accent bg-accent-soft text-accent' : 'border-line text-ink-soft'}`}
+                >
+                  Torneo
+                </button>
+              </div>
+            </div>
+          )}
 
           {!isViaje && (
             <div className="flex flex-col gap-1.5 text-xs font-semibold text-ink-soft">
@@ -336,6 +362,7 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [passwordModalOpen, setPasswordModalOpen] = useState(false)
+  const [tab, setTab] = useState<'calendario' | 'informes'>('calendario')
 
   const [itineraryDates, setItineraryDates] = useState<Set<string>>(new Set())
 
@@ -491,8 +518,10 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="font-display text-[11px] font-bold uppercase tracking-widest text-ink-soft">Calendario</p>
-          <h1 className="font-display text-2xl font-extrabold text-ink">Entrenamientos, partidos y viajes</h1>
+          <p className="font-display text-[11px] font-bold uppercase tracking-widest text-ink-soft">Panel de trabajo</p>
+          <h1 className="font-display text-2xl font-extrabold text-ink">
+            {tab === 'calendario' ? 'Entrenamientos, partidos y viajes' : 'Informes'}
+          </h1>
         </div>
         <div className="flex items-center gap-4">
           <button
@@ -508,6 +537,30 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
         </div>
       </header>
 
+      <div className="mb-6 flex gap-1 border-b border-line">
+        {(
+          [
+            ['calendario', 'Calendario'],
+            ['informes', 'Informes'],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`-mb-px border-b-2 px-3 py-2 font-display text-xs font-bold uppercase tracking-widest ${
+              tab === key ? 'border-accent text-ink' : 'border-transparent text-ink-soft hover:text-ink'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'informes' ? (
+        <Informes userId={userId} events={events} />
+      ) : (
+        <>
       <div className="mb-2 flex flex-wrap gap-2">
         {EVENT_KINDS.map((k) => (
           <button
@@ -656,6 +709,7 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
                       <div className="min-w-0 flex-1">
                         <span className={`text-[10px] font-bold uppercase tracking-widest ${meta.text}`}>
                           {LABELS[ev.kind].label}
+                          {ev.match_type && ` · ${ev.match_type}`}
                           {!ev.attending && ' · no asisto'}
                         </span>
                         <p className="truncate text-sm font-bold text-ink">{ev.title}</p>
@@ -683,6 +737,8 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
           ))}
         </div>
       </div>
+        </>
+      )}
 
       {modal && <EventModal state={modal} userId={userId} onClose={() => setModal(null)} onSaved={loadEvents} />}
       {dayViewDate && (
