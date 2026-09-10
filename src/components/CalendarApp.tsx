@@ -65,10 +65,12 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
   const [matchType, setMatchType] = useState<'amistoso' | 'torneo'>(ev?.match_type ?? 'amistoso')
   const [notes, setNotes] = useState(ev?.notes ?? '')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
+    setError(null)
     const payload = {
       user_id: userId,
       kind: state.kind,
@@ -83,12 +85,14 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
       match_type: isPartido ? matchType : null,
       notes: notes.trim() || null,
     }
-    if (ev) {
-      await supabase.from('events').update(payload).eq('id', ev.id)
-    } else {
-      await supabase.from('events').insert(payload)
-    }
+    const { error: saveError } = ev
+      ? await supabase.from('events').update(payload).eq('id', ev.id)
+      : await supabase.from('events').insert(payload)
     setSaving(false)
+    if (saveError) {
+      setError(saveError.message)
+      return
+    }
     onSaved()
     onClose()
   }
@@ -249,6 +253,8 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
               className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
             />
           </label>
+
+          {error && <p className="text-xs font-semibold text-partido">{error}</p>}
 
           <div className="mt-2 flex items-center justify-between">
             {ev ? (

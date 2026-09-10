@@ -24,10 +24,12 @@ function ReportModal({ state, userId, onClose, onSaved }: { state: ModalState; u
   const [content, setContent] = useState(r?.content ?? '')
   const [linkUrl, setLinkUrl] = useState(r?.link_url ?? '')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
+    setError(null)
     const payload = {
       user_id: userId,
       report_type: state.reportType,
@@ -38,12 +40,14 @@ function ReportModal({ state, userId, onClose, onSaved }: { state: ModalState; u
       link_url: linkUrl.trim() || null,
       updated_at: new Date().toISOString(),
     }
-    if (r) {
-      await supabase.from('reports').update(payload).eq('id', r.id)
-    } else {
-      await supabase.from('reports').insert(payload)
-    }
+    const { error: saveError } = r
+      ? await supabase.from('reports').update(payload).eq('id', r.id)
+      : await supabase.from('reports').insert(payload)
     setSaving(false)
+    if (saveError) {
+      setError(saveError.message)
+      return
+    }
     onSaved()
     onClose()
   }
@@ -127,6 +131,8 @@ function ReportModal({ state, userId, onClose, onSaved }: { state: ModalState; u
               className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
             />
           </label>
+
+          {error && <p className="text-xs font-semibold text-partido">{error}</p>}
 
           <div className="mt-2 flex items-center justify-between">
             {r ? (
