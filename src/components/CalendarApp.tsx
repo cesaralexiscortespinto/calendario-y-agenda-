@@ -48,7 +48,19 @@ interface ModalState {
   editing: CalendarEvent | null
 }
 
-function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; userId: string; onClose: () => void; onSaved: () => void }) {
+function EventModal({
+  state,
+  userId,
+  defaultDate,
+  onClose,
+  onSaved,
+}: {
+  state: ModalState
+  userId: string
+  defaultDate: string | null
+  onClose: () => void
+  onSaved: () => void
+}) {
   const ev = state.editing
   const isViaje = state.kind === 'viaje'
   const isPartido = state.kind === 'partido'
@@ -63,7 +75,7 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
     return idx >= 0 ? ev.title.slice(idx + 1).trim() : ''
   })
   const [category, setCategory] = useState(ev?.category ?? '')
-  const [date, setDate] = useState(ev?.date ?? todayISO())
+  const [date, setDate] = useState(ev?.date ?? defaultDate ?? todayISO())
   const [endDate, setEndDate] = useState(ev?.end_date ?? '')
   const [startTime, setStartTime] = useState(ev?.start_time?.slice(0, 5) ?? (isAllDay ? '' : '18:00'))
   const [endTime] = useState(ev?.end_time?.slice(0, 5) ?? '')
@@ -821,7 +833,9 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
         </>
       )}
 
-      {modal && <EventModal state={modal} userId={userId} onClose={() => setModal(null)} onSaved={loadEvents} />}
+      {modal && (
+        <EventModal state={modal} userId={userId} defaultDate={selectedDate} onClose={() => setModal(null)} onSaved={loadEvents} />
+      )}
       {dayViewDate && (
         <DayView
           date={dayViewDate}

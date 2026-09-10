@@ -13,17 +13,27 @@ function addDaysISO(iso: string, days: number) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 }
 
+const TMI_LOCATIONS = ['Juan Pinto Duran', 'Sulantay']
+
 function EditableRow({ item, onSaved, onCancel }: { item: ItineraryItem; onSaved: () => void; onCancel: () => void }) {
+  const isTmi = item.kind === 'tmi'
   const [time, setTime] = useState(item.start_time.slice(0, 5))
   const [label, setLabel] = useState(item.label)
   const [location, setLocation] = useState(item.location ?? '')
+  const [tmiLocation, setTmiLocation] = useState<'Juan Pinto Duran' | 'Sulantay' | 'otro'>(() =>
+    item.location && TMI_LOCATIONS.includes(item.location) ? (item.location as 'Juan Pinto Duran' | 'Sulantay') : 'otro',
+  )
+  const [tmiLocationCustom, setTmiLocationCustom] = useState(() =>
+    item.location && !TMI_LOCATIONS.includes(item.location) ? item.location : '',
+  )
   const [saving, setSaving] = useState(false)
 
   async function handleSave() {
     setSaving(true)
+    const finalLocation = isTmi ? (tmiLocation === 'otro' ? tmiLocationCustom.trim() : tmiLocation) : location.trim()
     await supabase
       .from('itinerary_items')
-      .update({ start_time: time + ':00', label: label.trim() || item.label, location: location.trim() || null })
+      .update({ start_time: time + ':00', label: label.trim() || item.label, location: finalLocation || null })
       .eq('id', item.id)
     setSaving(false)
     onSaved()
@@ -42,12 +52,34 @@ function EditableRow({ item, onSaved, onCancel }: { item: ItineraryItem; onSaved
         onChange={(e) => setLabel(e.target.value)}
         className="min-w-0 flex-1 rounded-md border border-line bg-paper-raised px-1.5 py-1 text-xs text-ink"
       />
-      <input
-        value={location}
-        onChange={(e) => setLocation(e.target.value)}
-        placeholder="Lugar"
-        className="min-w-0 flex-1 rounded-md border border-line bg-paper-raised px-1.5 py-1 text-xs text-ink"
-      />
+      {isTmi ? (
+        <>
+          <select
+            value={tmiLocation}
+            onChange={(e) => setTmiLocation(e.target.value as typeof tmiLocation)}
+            className="min-w-0 flex-1 rounded-md border border-line bg-paper-raised px-1.5 py-1 text-xs text-ink"
+          >
+            <option value="Juan Pinto Duran">Juan Pinto Duran</option>
+            <option value="Sulantay">Sulantay</option>
+            <option value="otro">Otro</option>
+          </select>
+          {tmiLocation === 'otro' && (
+            <input
+              value={tmiLocationCustom}
+              onChange={(e) => setTmiLocationCustom(e.target.value)}
+              placeholder="Lugar"
+              className="min-w-0 flex-1 rounded-md border border-line bg-paper-raised px-1.5 py-1 text-xs text-ink"
+            />
+          )}
+        </>
+      ) : (
+        <input
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          placeholder="Lugar"
+          className="min-w-0 flex-1 rounded-md border border-line bg-paper-raised px-1.5 py-1 text-xs text-ink"
+        />
+      )}
       <button type="button" onClick={onCancel} className="text-[10px] font-bold text-ink-soft hover:underline">
         Cancelar
       </button>
