@@ -85,13 +85,12 @@ function EventModal({
   const [endDate, setEndDate] = useState(ev?.end_date ?? '')
   const [startTime, setStartTime] = useState(ev?.start_time?.slice(0, 5) ?? (isAllDay ? '' : '18:00'))
   const [endTime] = useState(ev?.end_time?.slice(0, 5) ?? '')
-  const [location, setLocation] = useState(ev?.location ?? '')
-  const [tmiLocation, setTmiLocation] = useState<'Juan Pinto Duran' | 'Sulantay' | 'otro'>(() => {
-    if (!isTmi || !ev?.location) return 'Juan Pinto Duran'
+  const [locationChoice, setLocationChoice] = useState<'Juan Pinto Duran' | 'Sulantay' | 'otro'>(() => {
+    if (!ev?.location) return 'Juan Pinto Duran'
     return ev.location === 'Juan Pinto Duran' || ev.location === 'Sulantay' ? ev.location : 'otro'
   })
-  const [tmiLocationCustom, setTmiLocationCustom] = useState(() =>
-    isTmi && ev?.location && ev.location !== 'Juan Pinto Duran' && ev.location !== 'Sulantay' ? ev.location : '',
+  const [locationCustom, setLocationCustom] = useState(() =>
+    ev?.location && ev.location !== 'Juan Pinto Duran' && ev.location !== 'Sulantay' ? ev.location : '',
   )
   const [attending, setAttending] = useState(ev?.attending ?? true)
   const [matchType, setMatchType] = useState<'amistoso' | 'torneo'>(ev?.match_type ?? 'amistoso')
@@ -106,7 +105,7 @@ function EventModal({
     const finalTitle = isTmi
       ? [momento, ...[posicion.trim(), objetivo.trim()].filter(Boolean)].join(': ')
       : title.trim() || (isViaje ? 'Viaje sin título' : 'Evento sin título')
-    const finalLocation = isTmi ? (tmiLocation === 'otro' ? tmiLocationCustom.trim() : tmiLocation) : location.trim()
+    const finalLocation = locationChoice === 'otro' ? locationCustom.trim() : locationChoice
     const payload = {
       user_id: userId,
       kind: state.kind,
@@ -247,39 +246,28 @@ function EventModal({
             </div>
           )}
 
-          {isTmi ? (
-            <div className="flex flex-col gap-2">
-              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
-                Lugar
-                <select
-                  value={tmiLocation}
-                  onChange={(e) => setTmiLocation(e.target.value as typeof tmiLocation)}
-                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
-                >
-                  <option value="Juan Pinto Duran">Juan Pinto Duran</option>
-                  <option value="Sulantay">Sulantay</option>
-                  <option value="otro">Otro (especificar)</option>
-                </select>
-              </label>
-              {tmiLocation === 'otro' && (
-                <input
-                  value={tmiLocationCustom}
-                  onChange={(e) => setTmiLocationCustom(e.target.value)}
-                  placeholder="Escribe el lugar"
-                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
-                />
-              )}
-            </div>
-          ) : (
+          <div className="flex flex-col gap-2">
             <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
               {isViaje ? 'Destino' : 'Lugar'}
+              <select
+                value={locationChoice}
+                onChange={(e) => setLocationChoice(e.target.value as typeof locationChoice)}
+                className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              >
+                <option value="Juan Pinto Duran">Juan Pinto Duran</option>
+                <option value="Sulantay">Sulantay</option>
+                <option value="otro">Otro (especificar)</option>
+              </select>
+            </label>
+            {locationChoice === 'otro' && (
               <input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
+                value={locationCustom}
+                onChange={(e) => setLocationCustom(e.target.value)}
+                placeholder="Escribe el lugar"
                 className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
               />
-            </label>
-          )}
+            )}
+          </div>
 
           <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
             Categoría
