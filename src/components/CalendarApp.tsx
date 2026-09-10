@@ -9,6 +9,7 @@ import { parseCronogramaImage } from '@/lib/parseCronogramaImage'
 import DayView from '@/components/DayView'
 import ControlPanel from '@/components/ControlPanel'
 import Informes from '@/components/Informes'
+import { PRESET_LOCATIONS } from '@/lib/locations'
 
 const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
@@ -85,12 +86,12 @@ function EventModal({
   const [endDate, setEndDate] = useState(ev?.end_date ?? '')
   const [startTime, setStartTime] = useState(ev?.start_time?.slice(0, 5) ?? (isAllDay ? '' : '18:00'))
   const [endTime] = useState(ev?.end_time?.slice(0, 5) ?? '')
-  const [locationChoice, setLocationChoice] = useState<'Juan Pinto Duran' | 'Sulantay' | 'otro'>(() => {
-    if (!ev?.location) return 'Juan Pinto Duran'
-    return ev.location === 'Juan Pinto Duran' || ev.location === 'Sulantay' ? ev.location : 'otro'
+  const [locationChoice, setLocationChoice] = useState<(typeof PRESET_LOCATIONS)[number] | 'otro'>(() => {
+    if (!ev?.location) return 'Sulantay'
+    return (PRESET_LOCATIONS as readonly string[]).includes(ev.location) ? (ev.location as (typeof PRESET_LOCATIONS)[number]) : 'otro'
   })
   const [locationCustom, setLocationCustom] = useState(() =>
-    ev?.location && ev.location !== 'Juan Pinto Duran' && ev.location !== 'Sulantay' ? ev.location : '',
+    ev?.location && !(PRESET_LOCATIONS as readonly string[]).includes(ev.location) ? ev.location : '',
   )
   const [attending, setAttending] = useState(ev?.attending ?? true)
   const [matchType, setMatchType] = useState<'amistoso' | 'torneo'>(ev?.match_type ?? 'amistoso')
@@ -254,8 +255,11 @@ function EventModal({
                 onChange={(e) => setLocationChoice(e.target.value as typeof locationChoice)}
                 className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
               >
-                <option value="Juan Pinto Duran">Juan Pinto Duran</option>
-                <option value="Sulantay">Sulantay</option>
+                {PRESET_LOCATIONS.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
                 <option value="otro">Otro (especificar)</option>
               </select>
             </label>

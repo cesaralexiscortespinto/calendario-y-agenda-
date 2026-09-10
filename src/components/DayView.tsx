@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { EventKind, ItineraryItem } from '@/lib/database.types'
 import { EVENT_KINDS, KIND_META } from '@/lib/kindMeta'
+import { PRESET_LOCATIONS } from '@/lib/locations'
 
 function capital(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1)
@@ -13,16 +14,17 @@ function addDaysISO(iso: string, days: number) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 }
 
-const TMI_LOCATIONS = ['Juan Pinto Duran', 'Sulantay']
-
 function EditableRow({ item, onSaved, onCancel }: { item: ItineraryItem; onSaved: () => void; onCancel: () => void }) {
   const [time, setTime] = useState(item.start_time.slice(0, 5))
   const [label, setLabel] = useState(item.label)
-  const [locationChoice, setLocationChoice] = useState<'Juan Pinto Duran' | 'Sulantay' | 'otro'>(() =>
-    item.location && TMI_LOCATIONS.includes(item.location) ? (item.location as 'Juan Pinto Duran' | 'Sulantay') : 'otro',
-  )
+  const [locationChoice, setLocationChoice] = useState<(typeof PRESET_LOCATIONS)[number] | 'otro'>(() => {
+    if (!item.location) return 'Sulantay'
+    return (PRESET_LOCATIONS as readonly string[]).includes(item.location)
+      ? (item.location as (typeof PRESET_LOCATIONS)[number])
+      : 'otro'
+  })
   const [locationCustom, setLocationCustom] = useState(() =>
-    item.location && !TMI_LOCATIONS.includes(item.location) ? item.location : '',
+    item.location && !(PRESET_LOCATIONS as readonly string[]).includes(item.location) ? item.location : '',
   )
   const [saving, setSaving] = useState(false)
 
@@ -55,8 +57,11 @@ function EditableRow({ item, onSaved, onCancel }: { item: ItineraryItem; onSaved
         onChange={(e) => setLocationChoice(e.target.value as typeof locationChoice)}
         className="min-w-0 flex-1 rounded-md border border-line bg-paper-raised px-1.5 py-1 text-xs text-ink"
       >
-        <option value="Juan Pinto Duran">Juan Pinto Duran</option>
-        <option value="Sulantay">Sulantay</option>
+        {PRESET_LOCATIONS.map((loc) => (
+          <option key={loc} value={loc}>
+            {loc}
+          </option>
+        ))}
         <option value="otro">Otro</option>
       </select>
       {locationChoice === 'otro' && (
