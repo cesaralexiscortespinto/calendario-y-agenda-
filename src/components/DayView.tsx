@@ -230,6 +230,7 @@ export default function DayView({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -277,8 +278,8 @@ export default function DayView({
   }
 
   async function handleDelete(item: ItineraryItem) {
-    if (!confirm('¿Quitar esta fila de la planilla? (no afecta tu calendario)')) return
     await supabase.from('itinerary_items').delete().eq('id', item.id)
+    setConfirmDeleteId(null)
     await load()
   }
 
@@ -399,28 +400,50 @@ export default function DayView({
                   <span className="shrink-0 text-[10px] font-bold text-accent">✓ En tu calendario</span>
                 ) : (
                   <div className="flex shrink-0 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(item.id)}
-                      className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-ink-soft"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(item)}
-                      className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-partido hover:text-partido"
-                    >
-                      Quitar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAdd(item)}
-                      disabled={addingId === item.id}
-                      className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-accent hover:text-accent disabled:opacity-50"
-                    >
-                      {addingId === item.id ? '…' : '+ Agregar'}
-                    </button>
+                    {confirmDeleteId === item.id ? (
+                      <>
+                        <span className="text-[10px] font-bold text-ink-soft">¿Quitar?</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item)}
+                          className="rounded-md border border-partido bg-paper-raised px-2 py-1 text-[10px] font-bold text-partido"
+                        >
+                          Sí
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft"
+                        >
+                          No
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(item.id)}
+                          className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-ink-soft"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(item.id)}
+                          className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-partido hover:text-partido"
+                        >
+                          Quitar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAdd(item)}
+                          disabled={addingId === item.id}
+                          className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-accent hover:text-accent disabled:opacity-50"
+                        >
+                          {addingId === item.id ? '…' : '+ Agregar'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

@@ -133,10 +133,18 @@ function EventModal({
     onClose()
   }
 
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+
   async function handleDelete() {
     if (!ev) return
-    if (!confirm('¿Eliminar este evento?')) return
-    await supabase.from('events').delete().eq('id', ev.id)
+    setSaving(true)
+    const { error: deleteError } = await supabase.from('events').delete().eq('id', ev.id)
+    setSaving(false)
+    if (deleteError) {
+      setError(deleteError.message)
+      setConfirmingDelete(false)
+      return
+    }
     onSaved()
     onClose()
   }
@@ -347,9 +355,21 @@ function EventModal({
 
           <div className="mt-2 flex items-center justify-between">
             {ev ? (
-              <button type="button" onClick={handleDelete} className="text-xs font-bold text-partido hover:underline">
-                Eliminar
-              </button>
+              confirmingDelete ? (
+                <div className="flex items-center gap-2 text-xs font-bold">
+                  <span className="text-ink-soft">¿Eliminar?</span>
+                  <button type="button" onClick={handleDelete} disabled={saving} className="text-partido hover:underline disabled:opacity-60">
+                    {saving ? 'Eliminando…' : 'Sí, eliminar'}
+                  </button>
+                  <button type="button" onClick={() => setConfirmingDelete(false)} className="text-ink-soft hover:underline">
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setConfirmingDelete(true)} className="text-xs font-bold text-partido hover:underline">
+                  Eliminar
+                </button>
+              )
             ) : (
               <span />
             )}
