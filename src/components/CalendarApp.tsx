@@ -68,11 +68,17 @@ function EventModal({
   const isAllDay = isViaje
 
   const [title, setTitle] = useState(ev?.title ?? '')
-  const [posicion, setPosicion] = useState(() => (ev && isTmi ? (ev.title.split(':')[0]?.trim() ?? '') : ''))
-  const [objetivo, setObjetivo] = useState(() => {
+  const tmiRestOfTitle = (() => {
     if (!ev || !isTmi) return ''
-    const idx = ev.title.indexOf(':')
-    return idx >= 0 ? ev.title.slice(idx + 1).trim() : ''
+    return ev.title.replace(/^\s*(ofensivo|defensivo)\s*:?\s*/i, '')
+  })()
+  const [momento, setMomento] = useState<'Ofensivo' | 'Defensivo'>(() =>
+    ev && isTmi && /^\s*defensivo\b/i.test(ev.title) ? 'Defensivo' : 'Ofensivo',
+  )
+  const [posicion, setPosicion] = useState(() => (tmiRestOfTitle.split(':')[0]?.trim() ?? ''))
+  const [objetivo, setObjetivo] = useState(() => {
+    const idx = tmiRestOfTitle.indexOf(':')
+    return idx >= 0 ? tmiRestOfTitle.slice(idx + 1).trim() : ''
   })
   const [category, setCategory] = useState(ev?.category ?? '')
   const [date, setDate] = useState(ev?.date ?? defaultDate ?? todayISO())
@@ -98,7 +104,7 @@ function EventModal({
     setSaving(true)
     setError(null)
     const finalTitle = isTmi
-      ? [posicion.trim(), objetivo.trim()].filter(Boolean).join(': ') || 'TMI sin título'
+      ? [momento, ...[posicion.trim(), objetivo.trim()].filter(Boolean)].join(': ')
       : title.trim() || (isViaje ? 'Viaje sin título' : 'Evento sin título')
     const finalLocation = isTmi ? (tmiLocation === 'otro' ? tmiLocationCustom.trim() : tmiLocation) : location.trim()
     const payload = {
@@ -150,25 +156,38 @@ function EventModal({
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           {isTmi ? (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-3">
               <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
-                Posición
-                <input
-                  value={posicion}
-                  onChange={(e) => setPosicion(e.target.value)}
-                  placeholder="p. ej. Ofensivo: volantes"
+                Momento
+                <select
+                  value={momento}
+                  onChange={(e) => setMomento(e.target.value as 'Ofensivo' | 'Defensivo')}
                   className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
-                />
+                >
+                  <option value="Ofensivo">Ofensivo</option>
+                  <option value="Defensivo">Defensivo</option>
+                </select>
               </label>
-              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
-                Objetivo
-                <input
-                  value={objetivo}
-                  onChange={(e) => setObjetivo(e.target.value)}
-                  placeholder="p. ej. Definición"
-                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
-                />
-              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                  Posición
+                  <input
+                    value={posicion}
+                    onChange={(e) => setPosicion(e.target.value)}
+                    placeholder="p. ej. Volantes"
+                    className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                  Objetivo
+                  <input
+                    value={objetivo}
+                    onChange={(e) => setObjetivo(e.target.value)}
+                    placeholder="p. ej. Definición"
+                    className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                  />
+                </label>
+              </div>
             </div>
           ) : (
             <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
