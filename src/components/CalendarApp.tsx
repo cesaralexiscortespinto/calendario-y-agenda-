@@ -52,15 +52,29 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
   const ev = state.editing
   const isViaje = state.kind === 'viaje'
   const isPartido = state.kind === 'partido'
+  const isTmi = state.kind === 'tmi'
   const isAllDay = isViaje
 
   const [title, setTitle] = useState(ev?.title ?? '')
+  const [posicion, setPosicion] = useState(() => (ev && isTmi ? (ev.title.split(':')[0]?.trim() ?? '') : ''))
+  const [objetivo, setObjetivo] = useState(() => {
+    if (!ev || !isTmi) return ''
+    const idx = ev.title.indexOf(':')
+    return idx >= 0 ? ev.title.slice(idx + 1).trim() : ''
+  })
   const [category, setCategory] = useState(ev?.category ?? '')
   const [date, setDate] = useState(ev?.date ?? todayISO())
   const [endDate, setEndDate] = useState(ev?.end_date ?? '')
   const [startTime, setStartTime] = useState(ev?.start_time?.slice(0, 5) ?? (isAllDay ? '' : '18:00'))
   const [endTime] = useState(ev?.end_time?.slice(0, 5) ?? '')
   const [location, setLocation] = useState(ev?.location ?? '')
+  const [tmiLocation, setTmiLocation] = useState<'Juan Pinto Duran' | 'Sulantay' | 'otro'>(() => {
+    if (!isTmi || !ev?.location) return 'Juan Pinto Duran'
+    return ev.location === 'Juan Pinto Duran' || ev.location === 'Sulantay' ? ev.location : 'otro'
+  })
+  const [tmiLocationCustom, setTmiLocationCustom] = useState(() =>
+    isTmi && ev?.location && ev.location !== 'Juan Pinto Duran' && ev.location !== 'Sulantay' ? ev.location : '',
+  )
   const [attending, setAttending] = useState(ev?.attending ?? true)
   const [matchType, setMatchType] = useState<'amistoso' | 'torneo'>(ev?.match_type ?? 'amistoso')
   const [notes, setNotes] = useState(ev?.notes ?? '')
@@ -71,16 +85,20 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
     e.preventDefault()
     setSaving(true)
     setError(null)
+    const finalTitle = isTmi
+      ? [posicion.trim(), objetivo.trim()].filter(Boolean).join(': ') || 'TMI sin título'
+      : title.trim() || (isViaje ? 'Viaje sin título' : 'Evento sin título')
+    const finalLocation = isTmi ? (tmiLocation === 'otro' ? tmiLocationCustom.trim() : tmiLocation) : location.trim()
     const payload = {
       user_id: userId,
       kind: state.kind,
-      title: title.trim() || (isViaje ? 'Viaje sin título' : 'Evento sin título'),
+      title: finalTitle,
       category: category || null,
       date,
       end_date: isAllDay ? endDate || date : null,
       start_time: isAllDay ? null : startTime || null,
       end_time: isAllDay ? null : endTime || null,
-      location: location.trim() || null,
+      location: finalLocation || null,
       attending: isViaje ? true : attending,
       match_type: isPartido ? matchType : null,
       notes: notes.trim() || null,
@@ -119,15 +137,38 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
           </button>
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
-            {isViaje ? 'Título' : 'Título / rival'}
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={isViaje ? 'p. ej. Gira Regional Sub-16' : state.kind === 'partido' ? 'p. ej. vs. Universidad de Chile' : 'p. ej. MC13-S2'}
-              className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
-            />
-          </label>
+          {isTmi ? (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Posición
+                <input
+                  value={posicion}
+                  onChange={(e) => setPosicion(e.target.value)}
+                  placeholder="p. ej. Ofensivo: volantes"
+                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Objetivo
+                <input
+                  value={objetivo}
+                  onChange={(e) => setObjetivo(e.target.value)}
+                  placeholder="p. ej. Definición"
+                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                />
+              </label>
+            </div>
+          ) : (
+            <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+              {isViaje ? 'Título' : 'Título / rival'}
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={isViaje ? 'p. ej. Gira Regional Sub-16' : state.kind === 'partido' ? 'p. ej. vs. Universidad de Chile' : 'p. ej. MC13-S2'}
+                className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              />
+            </label>
+          )}
 
           {isAllDay ? (
             <div className="grid grid-cols-2 gap-3">
@@ -175,14 +216,39 @@ function EventModal({ state, userId, onClose, onSaved }: { state: ModalState; us
             </div>
           )}
 
-          <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
-            {isViaje ? 'Destino' : 'Lugar'}
-            <input
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
-            />
-          </label>
+          {isTmi ? (
+            <div className="flex flex-col gap-2">
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Lugar
+                <select
+                  value={tmiLocation}
+                  onChange={(e) => setTmiLocation(e.target.value as typeof tmiLocation)}
+                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                >
+                  <option value="Juan Pinto Duran">Juan Pinto Duran</option>
+                  <option value="Sulantay">Sulantay</option>
+                  <option value="otro">Otro (especificar)</option>
+                </select>
+              </label>
+              {tmiLocation === 'otro' && (
+                <input
+                  value={tmiLocationCustom}
+                  onChange={(e) => setTmiLocationCustom(e.target.value)}
+                  placeholder="Escribe el lugar"
+                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                />
+              )}
+            </div>
+          ) : (
+            <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+              {isViaje ? 'Destino' : 'Lugar'}
+              <input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              />
+            </label>
+          )}
 
           <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
             Categoría
