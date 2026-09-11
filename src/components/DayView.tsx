@@ -355,8 +355,14 @@ export default function DayView({
           </div>
         )}
 
+        {!loading && items.length > 0 && pending.length === 0 && (
+          <div className="rounded-xl border border-dashed border-line py-10 text-center text-sm text-ink-soft">
+            Todos los eventos importados de este día ya están en tu calendario.
+          </div>
+        )}
+
         <div className="flex flex-col gap-1.5 pb-14">
-          {items.map((item) => {
+          {pending.map((item) => {
             if (editingId === item.id) {
               return (
                 <EditableRow
@@ -371,7 +377,6 @@ export default function DayView({
               )
             }
             const meta = item.kind ? KIND_META[item.kind] : null
-            const added = !!item.added_event_id
             return (
               <div
                 key={item.id}
@@ -381,14 +386,12 @@ export default function DayView({
                   borderLeft: `4px solid ${meta ? `var(${meta.colorVar})` : 'var(--color-line)'}`,
                 }}
               >
-                {!added && (
-                  <input
-                    type="checkbox"
-                    checked={selected.has(item.id)}
-                    onChange={() => toggleSelected(item.id)}
-                    className="shrink-0"
-                  />
-                )}
+                <input
+                  type="checkbox"
+                  checked={selected.has(item.id)}
+                  onChange={() => toggleSelected(item.id)}
+                  className="shrink-0"
+                />
                 <span className="w-12 shrink-0 font-mono text-xs font-semibold text-ink-soft">{item.start_time.slice(0, 5)}</span>
                 <div className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-bold" style={{ color: meta ? `var(${meta.colorVar})` : 'var(--color-ink-soft)' }}>
@@ -396,56 +399,52 @@ export default function DayView({
                   </span>
                   {item.location && <span className="block truncate text-[10px] text-ink-soft">{item.location}</span>}
                 </div>
-                {added ? (
-                  <span className="shrink-0 text-[10px] font-bold text-accent">✓ En tu calendario</span>
-                ) : (
-                  <div className="flex shrink-0 gap-1.5">
-                    {confirmDeleteId === item.id ? (
-                      <>
-                        <span className="text-[10px] font-bold text-ink-soft">¿Quitar?</span>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(item)}
-                          className="rounded-md border border-partido bg-paper-raised px-2 py-1 text-[10px] font-bold text-partido"
-                        >
-                          Sí
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteId(null)}
-                          className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft"
-                        >
-                          No
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setEditingId(item.id)}
-                          className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-ink-soft"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteId(item.id)}
-                          className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-partido hover:text-partido"
-                        >
-                          Quitar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAdd(item)}
-                          disabled={addingId === item.id}
-                          className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-accent hover:text-accent disabled:opacity-50"
-                        >
-                          {addingId === item.id ? '…' : '+ Agregar'}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
+                <div className="flex shrink-0 gap-1.5">
+                  {confirmDeleteId === item.id ? (
+                    <>
+                      <span className="text-[10px] font-bold text-ink-soft">¿Quitar?</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(item)}
+                        className="rounded-md border border-partido bg-paper-raised px-2 py-1 text-[10px] font-bold text-partido"
+                      >
+                        Sí
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft"
+                      >
+                        No
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(item.id)}
+                        className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-ink-soft"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(item.id)}
+                        className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-partido hover:text-partido"
+                      >
+                        Quitar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAdd(item)}
+                        disabled={addingId === item.id}
+                        className="rounded-md border border-line bg-paper-raised px-2 py-1 text-[10px] font-bold text-ink-soft hover:border-accent hover:text-accent disabled:opacity-50"
+                      >
+                        {addingId === item.id ? '…' : '+ Agregar'}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             )
           })}
