@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { CalendarEvent, EventKind, Report } from '@/lib/database.types'
 import { CATEGORIES } from '@/lib/categories'
@@ -53,10 +53,12 @@ interface ModalState {
 const MC_TITLE_RE = /^MC(\d+)-S(\d+)$/i
 const MC_PREFIX_RE = /^MC(\d+)-S(\d+)\s*-\s*/i
 
-function findLatestMicrociclo(events: CalendarEvent[]): { mc: string; s: number } | null {
+/** Último entrenamiento con MC/S válido cuya fecha es ANTERIOR a `beforeDate` (partidos y otros días sin entrenamiento no cuentan ni cortan la secuencia). */
+function findMicrocicloBefore(events: CalendarEvent[], beforeDate: string): { mc: string; s: number } | null {
   let latest: { mc: string; s: number; date: string } | null = null
   for (const e of events) {
     if (e.kind !== 'entrenamiento') continue
+    if (e.date >= beforeDate) continue
     const m = e.title.match(MC_TITLE_RE)
     if (!m) continue
     if (!latest || e.date > latest.date) latest = { mc: m[1], s: Number(m[2]), date: e.date }
@@ -64,15 +66,20 @@ function findLatestMicrociclo(events: CalendarEvent[]): { mc: string; s: number 
   return latest ? { mc: latest.mc, s: latest.s } : null
 }
 
-/** MC/S a usar para un TMI nuevo: el mismo del entrenamiento de ese día, o el próximo si no hay uno. */
+/** MC/S para un Entrenamiento nuevo en `date`: sesión siguiente a la del último entrenamiento anterior a esa fecha. */
+function findMcSForNewEntreno(events: CalendarEvent[], date: string): { mc: string; s: number } | null {
+  const before = findMicrocicloBefore(events, date)
+  return before ? { mc: before.mc, s: before.s + 1 } : null
+}
+
+/** MC/S para un TMI nuevo en `date`: el mismo del entrenamiento de ese día si existe, si no el que le tocaría a un entrenamiento nuevo ese día. */
 function findMcSForDate(events: CalendarEvent[], date: string): { mc: string; s: number } | null {
   const sameDay = events.find((e) => e.kind === 'entrenamiento' && e.date === date && MC_TITLE_RE.test(e.title))
   if (sameDay) {
     const m = sameDay.title.match(MC_TITLE_RE)!
     return { mc: m[1], s: Number(m[2]) }
   }
-  const latest = findLatestMicrociclo(events)
-  return latest ? { mc: latest.mc, s: latest.s + 1 } : null
+  return findMcSForNewEntreno(events, date)
 }
 
 function EventModal({
@@ -109,34 +116,40 @@ function EventModal({
     return idx >= 0 ? tmiRestOfTitle.slice(idx + 1).trim() : ''
   })
   const needsMcS = isEntreno || isTmi
+  const [date, setDate] = useState(ev?.date ?? defaultDate ?? todayISO())
   const [mc, setMc] = useState(() => {
     if (!needsMcS) return ''
     if (isEntreno) {
       const m = ev?.title.match(MC_TITLE_RE)
       if (m) return m[1]
-      return findLatestMicrociclo(events)?.mc ?? ''
+      return findMcSForNewEntreno(events, date)?.mc ?? ''
     }
     const m = ev?.title.match(MC_PREFIX_RE)
     if (m) return m[1]
-    const initialDate = ev?.date ?? defaultDate ?? todayISO()
-    return findMcSForDate(events, initialDate)?.mc ?? ''
+    return findMcSForDate(events, date)?.mc ?? ''
   })
   const [sesion, setSesion] = useState(() => {
     if (!needsMcS) return ''
     if (isEntreno) {
       const m = ev?.title.match(MC_TITLE_RE)
       if (m) return m[2]
-      const latest = findLatestMicrociclo(events)
-      return latest ? String(latest.s + 1) : '1'
+      return String(findMcSForNewEntreno(events, date)?.s ?? 1)
     }
     const m = ev?.title.match(MC_PREFIX_RE)
     if (m) return m[2]
-    const initialDate = ev?.date ?? defaultDate ?? todayISO()
-    const found = findMcSForDate(events, initialDate)
-    return found ? String(found.s) : '1'
+    return String(findMcSForDate(events, date)?.s ?? 1)
   })
+
+  const mcsTouched = useRef(false)
+  useEffect(() => {
+    if (ev || !needsMcS || mcsTouched.current) return
+    const found = isEntreno ? findMcSForNewEntreno(events, date) : findMcSForDate(events, date)
+    setMc(found?.mc ?? '')
+    setSesion(String(found?.s ?? 1))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date])
+
   const [category, setCategory] = useState(ev?.category ?? '')
-  const [date, setDate] = useState(ev?.date ?? defaultDate ?? todayISO())
   const [endDate, setEndDate] = useState(ev?.end_date ?? '')
   const [startTime, setStartTime] = useState(ev?.start_time?.slice(0, 5) ?? (isAllDay ? '' : '18:00'))
   const [endTime] = useState(ev?.end_time?.slice(0, 5) ?? '')
@@ -230,7 +243,10 @@ function EventModal({
                     <span className="text-sm font-bold text-ink-soft">MC</span>
                     <input
                       value={mc}
-                      onChange={(e) => setMc(e.target.value)}
+                      onChange={(e) => {
+                      mcsTouched.current = true
+                      setMc(e.target.value)
+                    }}
                       placeholder="13"
                       inputMode="numeric"
                       required
@@ -244,7 +260,10 @@ function EventModal({
                     <span className="text-sm font-bold text-ink-soft">S</span>
                     <input
                       value={sesion}
-                      onChange={(e) => setSesion(e.target.value)}
+                      onChange={(e) => {
+                      mcsTouched.current = true
+                      setSesion(e.target.value)
+                    }}
                       placeholder="2"
                       inputMode="numeric"
                       required
@@ -293,7 +312,10 @@ function EventModal({
                   <span className="text-sm font-bold text-ink-soft">MC</span>
                   <input
                     value={mc}
-                    onChange={(e) => setMc(e.target.value)}
+                    onChange={(e) => {
+                      mcsTouched.current = true
+                      setMc(e.target.value)
+                    }}
                     placeholder="13"
                     inputMode="numeric"
                     required
@@ -307,7 +329,10 @@ function EventModal({
                   <span className="text-sm font-bold text-ink-soft">S</span>
                   <input
                     value={sesion}
-                    onChange={(e) => setSesion(e.target.value)}
+                    onChange={(e) => {
+                      mcsTouched.current = true
+                      setSesion(e.target.value)
+                    }}
                     placeholder="2"
                     inputMode="numeric"
                     required
