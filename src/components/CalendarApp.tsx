@@ -49,16 +49,31 @@ interface ModalState {
   editing: CalendarEvent | null
 }
 
+const MC_TITLE_RE = /^MC(\d+)-S(\d+)$/i
+
+function findLatestMicrociclo(events: CalendarEvent[]): { mc: string; s: number } | null {
+  let latest: { mc: string; s: number; date: string } | null = null
+  for (const e of events) {
+    if (e.kind !== 'entrenamiento') continue
+    const m = e.title.match(MC_TITLE_RE)
+    if (!m) continue
+    if (!latest || e.date > latest.date) latest = { mc: m[1], s: Number(m[2]), date: e.date }
+  }
+  return latest ? { mc: latest.mc, s: latest.s } : null
+}
+
 function EventModal({
   state,
   userId,
   defaultDate,
+  events,
   onClose,
   onSaved,
 }: {
   state: ModalState
   userId: string
   defaultDate: string | null
+  events: CalendarEvent[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -66,6 +81,7 @@ function EventModal({
   const isViaje = state.kind === 'viaje'
   const isPartido = state.kind === 'partido'
   const isTmi = state.kind === 'tmi'
+  const isEntreno = state.kind === 'entrenamiento'
   const isAllDay = isViaje
 
   const [title, setTitle] = useState(ev?.title ?? '')
@@ -80,6 +96,19 @@ function EventModal({
   const [objetivo, setObjetivo] = useState(() => {
     const idx = tmiRestOfTitle.indexOf(':')
     return idx >= 0 ? tmiRestOfTitle.slice(idx + 1).trim() : ''
+  })
+  const [mc, setMc] = useState(() => {
+    if (!isEntreno) return ''
+    const m = ev?.title.match(MC_TITLE_RE)
+    if (m) return m[1]
+    return findLatestMicrociclo(events)?.mc ?? ''
+  })
+  const [sesion, setSesion] = useState(() => {
+    if (!isEntreno) return ''
+    const m = ev?.title.match(MC_TITLE_RE)
+    if (m) return m[2]
+    const latest = findLatestMicrociclo(events)
+    return latest ? String(latest.s + 1) : '1'
   })
   const [category, setCategory] = useState(ev?.category ?? '')
   const [date, setDate] = useState(ev?.date ?? defaultDate ?? todayISO())
@@ -105,7 +134,9 @@ function EventModal({
     setError(null)
     const finalTitle = isTmi
       ? [momento, ...[posicion.trim(), objetivo.trim()].filter(Boolean)].join(': ')
-      : title.trim() || (isViaje ? 'Viaje sin título' : 'Evento sin título')
+      : isEntreno
+        ? `MC${mc.trim()}-S${sesion.trim()}`
+        : title.trim() || (isViaje ? 'Viaje sin título' : 'Evento sin título')
     const finalLocation = locationChoice === 'otro' ? locationCustom.trim() : locationChoice
     const payload = {
       user_id: userId,
@@ -197,13 +228,44 @@ function EventModal({
                 </label>
               </div>
             </div>
+          ) : isEntreno ? (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Microciclo
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-bold text-ink-soft">MC</span>
+                  <input
+                    value={mc}
+                    onChange={(e) => setMc(e.target.value)}
+                    placeholder="13"
+                    inputMode="numeric"
+                    required
+                    className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                  />
+                </div>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Sesión
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-bold text-ink-soft">S</span>
+                  <input
+                    value={sesion}
+                    onChange={(e) => setSesion(e.target.value)}
+                    placeholder="2"
+                    inputMode="numeric"
+                    required
+                    className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                  />
+                </div>
+              </label>
+            </div>
           ) : (
             <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
               {isViaje ? 'Título' : 'Título / rival'}
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder={isViaje ? 'p. ej. Gira Regional Sub-16' : state.kind === 'partido' ? 'p. ej. vs. Universidad de Chile' : 'p. ej. MC13-S2'}
+                placeholder={isViaje ? 'p. ej. Gira Regional Sub-16' : state.kind === 'partido' ? 'p. ej. vs. Universidad de Chile' : 'Título'}
                 className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
               />
             </label>
@@ -865,7 +927,14 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
       )}
 
       {modal && (
-        <EventModal state={modal} userId={userId} defaultDate={selectedDate} onClose={() => setModal(null)} onSaved={loadEvents} />
+        <EventModal
+          state={modal}
+          userId={userId}
+          defaultDate={selectedDate}
+          events={events}
+          onClose={() => setModal(null)}
+          onSaved={loadEvents}
+        />
       )}
       {dayViewDate && (
         <DayView
