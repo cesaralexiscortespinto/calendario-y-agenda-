@@ -79,9 +79,33 @@ function AssetRow({ url, filename, label }: { url: string; filename: string; lab
 
 const MOMENTO_FILTERS = ['all', 'Ofensivo', 'Defensivo'] as const
 
+const POSITION_FILTERS = ['Portero', 'Laterales', 'Centrales', 'Volantes', 'Media Punta', 'Delantero', 'Extremo'] as const
+
+function normalize(s: string) {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+const POSITION_PATTERNS: Record<(typeof POSITION_FILTERS)[number], RegExp> = {
+  Portero: /porter/,
+  Laterales: /later/,
+  Centrales: /central/,
+  Volantes: /volante/,
+  'Media Punta': /media\s*-?\s*punta|mediapunta/,
+  Delantero: /delanter/,
+  Extremo: /extrem/,
+}
+
+function matchesPositionFilter(posicion: string, filter: (typeof POSITION_FILTERS)[number]) {
+  return POSITION_PATTERNS[filter].test(normalize(posicion))
+}
+
 export default function TmiLibrary({ events }: { events: CalendarEvent[] }) {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [momentoFilter, setMomentoFilter] = useState<(typeof MOMENTO_FILTERS)[number]>('all')
+  const [positionFilter, setPositionFilter] = useState<'all' | (typeof POSITION_FILTERS)[number]>('all')
   const [onlyWithMedia, setOnlyWithMedia] = useState(false)
   const [search, setSearch] = useState('')
 
@@ -92,6 +116,7 @@ export default function TmiLibrary({ events }: { events: CalendarEvent[] }) {
       .filter(({ ev, parsed }) => {
         if (categoryFilter && ev.category !== categoryFilter) return false
         if (momentoFilter !== 'all' && parsed.momento !== momentoFilter) return false
+        if (positionFilter !== 'all' && !matchesPositionFilter(parsed.posicion, positionFilter)) return false
         if (onlyWithMedia && !ev.video_url && !ev.ficha_url) return false
         if (search) {
           const q = search.toLowerCase()
@@ -100,7 +125,7 @@ export default function TmiLibrary({ events }: { events: CalendarEvent[] }) {
         return true
       })
       .sort((a, b) => (a.ev.date < b.ev.date ? 1 : a.ev.date > b.ev.date ? -1 : 0))
-  }, [events, categoryFilter, momentoFilter, onlyWithMedia, search])
+  }, [events, categoryFilter, momentoFilter, positionFilter, onlyWithMedia, search])
 
   return (
     <div>
@@ -141,6 +166,30 @@ export default function TmiLibrary({ events }: { events: CalendarEvent[] }) {
           <input type="checkbox" checked={onlyWithMedia} onChange={(e) => setOnlyWithMedia(e.target.checked)} />
           Solo con video/ficha
         </label>
+      </div>
+
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => setPositionFilter('all')}
+          className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+            positionFilter === 'all' ? 'border-ink bg-ink text-paper' : 'border-line text-ink-soft'
+          }`}
+        >
+          Todas las posiciones
+        </button>
+        {POSITION_FILTERS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => setPositionFilter(p)}
+            className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+              positionFilter === p ? 'border-ink bg-ink text-paper' : 'border-line text-ink-soft'
+            }`}
+          >
+            {p}
+          </button>
+        ))}
       </div>
 
       {tmis.length === 0 && (
