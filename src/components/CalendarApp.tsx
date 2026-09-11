@@ -272,40 +272,55 @@ function EventModal({
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           {isTmi ? (
             <div className="flex flex-col gap-3">
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+              <div className="flex gap-3">
+                <label className="flex w-20 shrink-0 flex-col gap-1 text-xs font-semibold text-ink-soft">
                   Microciclo
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     <span className="text-sm font-bold text-ink-soft">MC</span>
                     <input
                       value={mc}
                       onChange={(e) => {
-                      mcsTouched.current = true
-                      setMc(e.target.value)
-                    }}
+                        mcsTouched.current = true
+                        setMc(e.target.value)
+                      }}
                       placeholder="13"
                       inputMode="numeric"
                       required
-                      className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                      className="w-full min-w-0 rounded-lg border border-line bg-paper px-2 py-2 text-sm text-ink outline-none focus:border-accent"
                     />
                   </div>
                 </label>
-                <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                <label className="flex w-20 shrink-0 flex-col gap-1 text-xs font-semibold text-ink-soft">
                   Sesión
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     <span className="text-sm font-bold text-ink-soft">S</span>
                     <input
                       value={sesion}
                       onChange={(e) => {
-                      mcsTouched.current = true
-                      setSesion(e.target.value)
-                    }}
+                        mcsTouched.current = true
+                        setSesion(e.target.value)
+                      }}
                       placeholder="2"
                       inputMode="numeric"
                       required
-                      className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                      className="w-full min-w-0 rounded-lg border border-line bg-paper px-2 py-2 text-sm text-ink outline-none focus:border-accent"
                     />
                   </div>
+                </label>
+                <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-ink-soft">
+                  Categoría
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full min-w-0 rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                  >
+                    <option value="">Sin categoría</option>
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
               <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
@@ -339,46 +354,6 @@ function EventModal({
                   />
                 </label>
               </div>
-
-              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
-                Video del ejercicio
-                {videoUrl && !videoFile && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-accent hover:underline">
-                      Ver video actual →
-                    </a>
-                    <button type="button" onClick={() => setVideoUrl(null)} className="text-ink-soft hover:underline">
-                      Quitar
-                    </button>
-                  </div>
-                )}
-                <input
-                  type="file"
-                  accept="video/*"
-                  onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
-                  className="rounded-lg border border-line bg-paper px-3 py-2 text-xs text-ink outline-none file:mr-2 file:rounded-md file:border-0 file:bg-line file:px-2 file:py-1 file:text-xs file:font-bold focus:border-accent"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
-                Ficha del ejercicio (PDF o imagen)
-                {fichaUrl && !fichaFile && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <a href={fichaUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-accent hover:underline">
-                      Ver ficha actual →
-                    </a>
-                    <button type="button" onClick={() => setFichaUrl(null)} className="text-ink-soft hover:underline">
-                      Quitar
-                    </button>
-                  </div>
-                )}
-                <input
-                  type="file"
-                  accept="application/pdf,image/*"
-                  onChange={(e) => setFichaFile(e.target.files?.[0] ?? null)}
-                  className="rounded-lg border border-line bg-paper px-3 py-2 text-xs text-ink outline-none file:mr-2 file:rounded-md file:border-0 file:bg-line file:px-2 file:py-1 file:text-xs file:font-bold focus:border-accent"
-                />
-              </label>
             </div>
           ) : isEntreno ? (
             <div className="grid grid-cols-2 gap-3">
@@ -501,21 +476,23 @@ function EventModal({
             )}
           </div>
 
-          <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
-            Categoría
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
-            >
-              <option value="">Sin categoría</option>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
+          {!isTmi && (
+            <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+              Categoría
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              >
+                <option value="">Sin categoría</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           {isPartido && (
             <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
@@ -565,6 +542,50 @@ function EventModal({
                   No asisto
                 </button>
               </div>
+            </div>
+          )}
+
+          {isTmi && (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Video del ejercicio
+                {videoUrl && !videoFile && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-accent hover:underline">
+                      Ver video →
+                    </a>
+                    <button type="button" onClick={() => setVideoUrl(null)} className="text-ink-soft hover:underline">
+                      Quitar
+                    </button>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="video/*"
+                  onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
+                  className="w-full min-w-0 rounded-lg border border-line bg-paper px-2 py-2 text-xs text-ink outline-none file:mr-1.5 file:rounded-md file:border-0 file:bg-line file:px-1.5 file:py-1 file:text-xs file:font-bold focus:border-accent"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Ficha (PDF o imagen)
+                {fichaUrl && !fichaFile && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <a href={fichaUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-accent hover:underline">
+                      Ver ficha →
+                    </a>
+                    <button type="button" onClick={() => setFichaUrl(null)} className="text-ink-soft hover:underline">
+                      Quitar
+                    </button>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  onChange={(e) => setFichaFile(e.target.files?.[0] ?? null)}
+                  className="w-full min-w-0 rounded-lg border border-line bg-paper px-2 py-2 text-xs text-ink outline-none file:mr-1.5 file:rounded-md file:border-0 file:bg-line file:px-1.5 file:py-1 file:text-xs file:font-bold focus:border-accent"
+                />
+              </label>
             </div>
           )}
 
