@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { CalendarEvent, EventKind, Report } from '@/lib/database.types'
 import { CATEGORIES } from '@/lib/categories'
 import { KIND_META as LABELS } from '@/lib/kindMeta'
+import { MATCH_TYPES, MATCH_TYPE_META } from '@/lib/matchTypes'
 
 function StatBar({ label, value, max, colorVar, sub }: { label: string; value: number; max: number; colorVar: string; sub?: string }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0
@@ -51,20 +52,21 @@ export default function ControlPanel({ events, reports }: { events: CalendarEven
 
   const stats = useMemo(() => {
     const counts: Record<EventKind, number> = { entrenamiento: 0, partido: 0, viaje: 0, charla_tecnica: 0, tmi: 0, otros: 0 }
-    let amistosos = 0
-    let torneos = 0
+    const matchTypeCounts: Record<string, number> = {}
     for (const ev of filteredEvents) {
       counts[ev.kind]++
-      if (ev.kind === 'partido') {
-        if (ev.match_type === 'amistoso') amistosos++
-        else if (ev.match_type === 'torneo') torneos++
+      if (ev.kind === 'partido' && ev.match_type) {
+        matchTypeCounts[ev.match_type] = (matchTypeCounts[ev.match_type] ?? 0) + 1
       }
     }
     const nonViaje = filteredEvents.filter((ev) => ev.kind !== 'viaje')
     const attendanceRate = nonViaje.length > 0 ? Math.round((nonViaje.filter((ev) => ev.attending).length / nonViaje.length) * 100) : null
     const informesCount = filteredReports.length
     const max = Math.max(counts.entrenamiento, counts.partido, counts.charla_tecnica, counts.tmi, counts.viaje, counts.otros, informesCount, 1)
-    return { counts, amistosos, torneos, attendanceRate, informesCount, max }
+    const matchTypeSub = MATCH_TYPES.filter((t) => matchTypeCounts[t] > 0)
+      .map((t) => `${matchTypeCounts[t]} ${MATCH_TYPE_META[t].label.toLowerCase()}`)
+      .join(' · ')
+    return { counts, matchTypeSub, attendanceRate, informesCount, max }
   }, [filteredEvents, filteredReports])
 
   return (
@@ -106,7 +108,7 @@ export default function ControlPanel({ events, reports }: { events: CalendarEven
           value={stats.counts.partido}
           max={stats.max}
           colorVar={LABELS.partido.colorVar}
-          sub={stats.counts.partido > 0 ? `${stats.amistosos} amistosos · ${stats.torneos} de torneo` : undefined}
+          sub={stats.matchTypeSub || undefined}
         />
         <StatBar label="Charlas Técnicas" value={stats.counts.charla_tecnica} max={stats.max} colorVar={LABELS.charla_tecnica.colorVar} />
         <StatBar label="TMI" value={stats.counts.tmi} max={stats.max} colorVar={LABELS.tmi.colorVar} />

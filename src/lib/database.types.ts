@@ -1,5 +1,7 @@
 export type EventKind = 'entrenamiento' | 'partido' | 'viaje' | 'charla_tecnica' | 'tmi' | 'otros'
 
+export type MatchType = 'amistoso' | 'amistoso_internacional' | 'torneo_amistoso' | 'competicion_oficial'
+
 export interface CalendarEvent {
   id: string
   user_id: string
@@ -13,7 +15,7 @@ export interface CalendarEvent {
   location: string | null
   attending: boolean
   notes: string | null
-  match_type: 'amistoso' | 'torneo' | null
+  match_type: MatchType | null
   created_at: string
 }
 
