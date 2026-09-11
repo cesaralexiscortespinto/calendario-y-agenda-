@@ -53,32 +53,43 @@ interface ModalState {
 const MC_TITLE_RE = /^MC(\d+)-S(\d+)$/i
 const MC_PREFIX_RE = /^MC(\d+)-S(\d+)\s*-\s*/i
 
-/** Último entrenamiento con MC/S válido cuya fecha es ANTERIOR a `beforeDate` (partidos y otros días sin entrenamiento no cuentan ni cortan la secuencia). */
-function findMicrocicloBefore(events: CalendarEvent[], beforeDate: string): { mc: string; s: number } | null {
+/**
+ * Último entrenamiento con MC/S válido cuya fecha es `date` o anterior (partidos y otros
+ * días sin entrenamiento no cuentan ni cortan la secuencia). Incluir el mismo día permite que
+ * un segundo turno de entreno el mismo día siga la sesión del primero, en vez de repetirla.
+ */
+function findMicrocicloUpTo(events: CalendarEvent[], date: string): { mc: string; s: number } | null {
   let latest: { mc: string; s: number; date: string } | null = null
   for (const e of events) {
     if (e.kind !== 'entrenamiento') continue
-    if (e.date >= beforeDate) continue
+    if (e.date > date) continue
     const m = e.title.match(MC_TITLE_RE)
     if (!m) continue
-    if (!latest || e.date > latest.date) latest = { mc: m[1], s: Number(m[2]), date: e.date }
+    const s = Number(m[2])
+    if (!latest || e.date > latest.date || (e.date === latest.date && s > latest.s)) {
+      latest = { mc: m[1], s, date: e.date }
+    }
   }
   return latest ? { mc: latest.mc, s: latest.s } : null
 }
 
-/** MC/S para un Entrenamiento nuevo en `date`: sesión siguiente a la del último entrenamiento anterior a esa fecha. */
+/** MC/S para un Entrenamiento nuevo en `date`: sesión siguiente a la del último entrenamiento hasta esa fecha (mismo día incluido, para dos turnos). */
 function findMcSForNewEntreno(events: CalendarEvent[], date: string): { mc: string; s: number } | null {
-  const before = findMicrocicloBefore(events, date)
-  return before ? { mc: before.mc, s: before.s + 1 } : null
+  const upTo = findMicrocicloUpTo(events, date)
+  return upTo ? { mc: upTo.mc, s: upTo.s + 1 } : null
 }
 
-/** MC/S para un TMI nuevo en `date`: el mismo del entrenamiento de ese día si existe, si no el que le tocaría a un entrenamiento nuevo ese día. */
+/** MC/S para un TMI nuevo en `date`: la sesión más alta del entrenamiento de ese día si existe (por si hay 2 turnos), si no el que le tocaría a un entrenamiento nuevo ese día. */
 function findMcSForDate(events: CalendarEvent[], date: string): { mc: string; s: number } | null {
-  const sameDay = events.find((e) => e.kind === 'entrenamiento' && e.date === date && MC_TITLE_RE.test(e.title))
-  if (sameDay) {
-    const m = sameDay.title.match(MC_TITLE_RE)!
-    return { mc: m[1], s: Number(m[2]) }
+  let sameDayBest: { mc: string; s: number } | null = null
+  for (const e of events) {
+    if (e.kind !== 'entrenamiento' || e.date !== date) continue
+    const m = e.title.match(MC_TITLE_RE)
+    if (!m) continue
+    const s = Number(m[2])
+    if (!sameDayBest || s > sameDayBest.s) sameDayBest = { mc: m[1], s }
   }
+  if (sameDayBest) return sameDayBest
   return findMcSForNewEntreno(events, date)
 }
 
