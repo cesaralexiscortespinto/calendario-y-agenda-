@@ -51,6 +51,7 @@ interface ModalState {
 }
 
 const MC_TITLE_RE = /^MC(\d+)-S(\d+)$/i
+const MC_PREFIX_RE = /^MC(\d+)-S(\d+)\s*-\s*/i
 
 function findLatestMicrociclo(events: CalendarEvent[]): { mc: string; s: number } | null {
   let latest: { mc: string; s: number; date: string } | null = null
@@ -61,6 +62,17 @@ function findLatestMicrociclo(events: CalendarEvent[]): { mc: string; s: number 
     if (!latest || e.date > latest.date) latest = { mc: m[1], s: Number(m[2]), date: e.date }
   }
   return latest ? { mc: latest.mc, s: latest.s } : null
+}
+
+/** MC/S a usar para un TMI nuevo: el mismo del entrenamiento de ese día, o el próximo si no hay uno. */
+function findMcSForDate(events: CalendarEvent[], date: string): { mc: string; s: number } | null {
+  const sameDay = events.find((e) => e.kind === 'entrenamiento' && e.date === date && MC_TITLE_RE.test(e.title))
+  if (sameDay) {
+    const m = sameDay.title.match(MC_TITLE_RE)!
+    return { mc: m[1], s: Number(m[2]) }
+  }
+  const latest = findLatestMicrociclo(events)
+  return latest ? { mc: latest.mc, s: latest.s + 1 } : null
 }
 
 function EventModal({
@@ -86,30 +98,42 @@ function EventModal({
   const isAllDay = isViaje
 
   const [title, setTitle] = useState(ev?.title ?? '')
-  const tmiRestOfTitle = (() => {
-    if (!ev || !isTmi) return ''
-    return ev.title.replace(/^\s*(ofensivo|defensivo)\s*:?\s*/i, '')
-  })()
+  const tmiTitleAfterMcS = ev && isTmi ? ev.title.replace(MC_PREFIX_RE, '') : ''
+  const tmiRestOfTitle = tmiTitleAfterMcS.replace(/^\s*(ofensivo|defensivo)\s*:?\s*/i, '')
   const [momento, setMomento] = useState<'Ofensivo' | 'Defensivo'>(() =>
-    ev && isTmi && /^\s*defensivo\b/i.test(ev.title) ? 'Defensivo' : 'Ofensivo',
+    ev && isTmi && /^\s*defensivo\b/i.test(tmiTitleAfterMcS) ? 'Defensivo' : 'Ofensivo',
   )
   const [posicion, setPosicion] = useState(() => (tmiRestOfTitle.split(':')[0]?.trim() ?? ''))
   const [objetivo, setObjetivo] = useState(() => {
     const idx = tmiRestOfTitle.indexOf(':')
     return idx >= 0 ? tmiRestOfTitle.slice(idx + 1).trim() : ''
   })
+  const needsMcS = isEntreno || isTmi
   const [mc, setMc] = useState(() => {
-    if (!isEntreno) return ''
-    const m = ev?.title.match(MC_TITLE_RE)
+    if (!needsMcS) return ''
+    if (isEntreno) {
+      const m = ev?.title.match(MC_TITLE_RE)
+      if (m) return m[1]
+      return findLatestMicrociclo(events)?.mc ?? ''
+    }
+    const m = ev?.title.match(MC_PREFIX_RE)
     if (m) return m[1]
-    return findLatestMicrociclo(events)?.mc ?? ''
+    const initialDate = ev?.date ?? defaultDate ?? todayISO()
+    return findMcSForDate(events, initialDate)?.mc ?? ''
   })
   const [sesion, setSesion] = useState(() => {
-    if (!isEntreno) return ''
-    const m = ev?.title.match(MC_TITLE_RE)
+    if (!needsMcS) return ''
+    if (isEntreno) {
+      const m = ev?.title.match(MC_TITLE_RE)
+      if (m) return m[2]
+      const latest = findLatestMicrociclo(events)
+      return latest ? String(latest.s + 1) : '1'
+    }
+    const m = ev?.title.match(MC_PREFIX_RE)
     if (m) return m[2]
-    const latest = findLatestMicrociclo(events)
-    return latest ? String(latest.s + 1) : '1'
+    const initialDate = ev?.date ?? defaultDate ?? todayISO()
+    const found = findMcSForDate(events, initialDate)
+    return found ? String(found.s) : '1'
   })
   const [category, setCategory] = useState(ev?.category ?? '')
   const [date, setDate] = useState(ev?.date ?? defaultDate ?? todayISO())
@@ -135,7 +159,7 @@ function EventModal({
     setSaving(true)
     setError(null)
     const finalTitle = isTmi
-      ? [momento, ...[posicion.trim(), objetivo.trim()].filter(Boolean)].join(': ')
+      ? `MC${mc.trim()}-S${sesion.trim()} - ${[momento, ...[posicion.trim(), objetivo.trim()].filter(Boolean)].join(': ')}`
       : isEntreno
         ? `MC${mc.trim()}-S${sesion.trim()}`
         : title.trim() || (isViaje ? 'Viaje sin título' : 'Evento sin título')
@@ -199,6 +223,36 @@ function EventModal({
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           {isTmi ? (
             <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                  Microciclo
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-bold text-ink-soft">MC</span>
+                    <input
+                      value={mc}
+                      onChange={(e) => setMc(e.target.value)}
+                      placeholder="13"
+                      inputMode="numeric"
+                      required
+                      className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                    />
+                  </div>
+                </label>
+                <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                  Sesión
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-bold text-ink-soft">S</span>
+                    <input
+                      value={sesion}
+                      onChange={(e) => setSesion(e.target.value)}
+                      placeholder="2"
+                      inputMode="numeric"
+                      required
+                      className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                    />
+                  </div>
+                </label>
+              </div>
               <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
                 Momento
                 <select
