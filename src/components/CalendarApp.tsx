@@ -125,6 +125,7 @@ function EventModal({
   )
   const [attending, setAttending] = useState(ev?.attending ?? true)
   const [matchType, setMatchType] = useState<MatchType>(ev?.match_type ?? 'amistoso')
+  const [competitionName, setCompetitionName] = useState(ev?.competition_name ?? '')
   const [notes, setNotes] = useState(ev?.notes ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -151,6 +152,7 @@ function EventModal({
       location: finalLocation || null,
       attending: isViaje ? true : attending,
       match_type: isPartido ? matchType : null,
+      competition_name: isPartido && matchType === 'competicion_oficial' ? competitionName.trim() || null : null,
       notes: notes.trim() || null,
     }
     const { error: saveError } = ev
@@ -374,6 +376,18 @@ function EventModal({
                   </option>
                 ))}
               </select>
+            </label>
+          )}
+
+          {isPartido && matchType === 'competicion_oficial' && (
+            <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+              Especificar competencia
+              <input
+                value={competitionName}
+                onChange={(e) => setCompetitionName(e.target.value)}
+                placeholder="p. ej. Sudamericano, Mundial"
+                className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              />
             </label>
           )}
 
@@ -892,6 +906,7 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
                         <span className={`text-[10px] font-bold uppercase tracking-widest ${meta.text}`}>
                           {LABELS[ev.kind].label}
                           {ev.match_type && ` · ${MATCH_TYPE_META[ev.match_type].label}`}
+                          {ev.competition_name && ` (${ev.competition_name})`}
                           {!ev.attending && ' · no asisto'}
                         </span>
                         <p className="truncate text-sm font-bold text-ink">{ev.title}</p>

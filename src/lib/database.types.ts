@@ -16,6 +16,7 @@ export interface CalendarEvent {
   attending: boolean
   notes: string | null
   match_type: MatchType | null
+  competition_name: string | null
   created_at: string
 }
 
