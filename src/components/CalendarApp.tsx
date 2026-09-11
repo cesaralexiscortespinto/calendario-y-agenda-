@@ -93,6 +93,15 @@ function findMcSForDate(events: CalendarEvent[], date: string): { mc: string; s:
   return findMcSForNewEntreno(events, date)
 }
 
+async function uploadTmiFile(userId: string, file: File): Promise<string> {
+  const ext = file.name.split('.').pop() || 'bin'
+  const path = `${userId}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('tmi-media').upload(path, file)
+  if (error) throw error
+  const { data } = supabase.storage.from('tmi-media').getPublicUrl(path)
+  return data.publicUrl
+}
+
 function EventModal({
   state,
   userId,
@@ -175,6 +184,10 @@ function EventModal({
   const [matchType, setMatchType] = useState<MatchType>(ev?.match_type ?? 'amistoso')
   const [competitionName, setCompetitionName] = useState(ev?.competition_name ?? '')
   const [notes, setNotes] = useState(ev?.notes ?? '')
+  const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [fichaFile, setFichaFile] = useState<File | null>(null)
+  const [videoUrl, setVideoUrl] = useState(ev?.video_url ?? null)
+  const [fichaUrl, setFichaUrl] = useState(ev?.ficha_url ?? null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -182,6 +195,16 @@ function EventModal({
     e.preventDefault()
     setSaving(true)
     setError(null)
+    let finalVideoUrl = videoUrl
+    let finalFichaUrl = fichaUrl
+    try {
+      if (videoFile) finalVideoUrl = await uploadTmiFile(userId, videoFile)
+      if (fichaFile) finalFichaUrl = await uploadTmiFile(userId, fichaFile)
+    } catch (err) {
+      setSaving(false)
+      setError(err instanceof Error ? err.message : 'No se pudo subir el archivo.')
+      return
+    }
     const finalTitle = isTmi
       ? `MC${mc.trim()}-S${sesion.trim()} - ${[momento, ...[posicion.trim(), objetivo.trim()].filter(Boolean)].join(': ')}`
       : isEntreno
@@ -201,6 +224,8 @@ function EventModal({
       attending: isViaje ? true : attending,
       match_type: isPartido ? matchType : null,
       competition_name: isPartido && matchType === 'competicion_oficial' ? competitionName.trim() || null : null,
+      video_url: isTmi ? finalVideoUrl : null,
+      ficha_url: isTmi ? finalFichaUrl : null,
       notes: notes.trim() || null,
     }
     const { error: saveError } = ev
@@ -314,6 +339,46 @@ function EventModal({
                   />
                 </label>
               </div>
+
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Video del ejercicio
+                {videoUrl && !videoFile && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-accent hover:underline">
+                      Ver video actual →
+                    </a>
+                    <button type="button" onClick={() => setVideoUrl(null)} className="text-ink-soft hover:underline">
+                      Quitar
+                    </button>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="video/*"
+                  onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
+                  className="rounded-lg border border-line bg-paper px-3 py-2 text-xs text-ink outline-none file:mr-2 file:rounded-md file:border-0 file:bg-line file:px-2 file:py-1 file:text-xs file:font-bold focus:border-accent"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                Ficha del ejercicio (PDF o imagen)
+                {fichaUrl && !fichaFile && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <a href={fichaUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-accent hover:underline">
+                      Ver ficha actual →
+                    </a>
+                    <button type="button" onClick={() => setFichaUrl(null)} className="text-ink-soft hover:underline">
+                      Quitar
+                    </button>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  onChange={(e) => setFichaFile(e.target.files?.[0] ?? null)}
+                  className="rounded-lg border border-line bg-paper px-3 py-2 text-xs text-ink outline-none file:mr-2 file:rounded-md file:border-0 file:bg-line file:px-2 file:py-1 file:text-xs file:font-bold focus:border-accent"
+                />
+              </label>
             </div>
           ) : isEntreno ? (
             <div className="grid grid-cols-2 gap-3">
@@ -1014,6 +1079,16 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
                           >
                             Exportar .ics
                           </button>
+                          {ev.video_url && (
+                            <a href={ev.video_url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+                              🎥 Video
+                            </a>
+                          )}
+                          {ev.ficha_url && (
+                            <a href={ev.ficha_url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+                              📄 Ficha
+                            </a>
+                          )}
                         </div>
                       </div>
                     </div>

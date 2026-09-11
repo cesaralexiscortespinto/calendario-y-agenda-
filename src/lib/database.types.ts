@@ -17,6 +17,8 @@ export interface CalendarEvent {
   notes: string | null
   match_type: MatchType | null
   competition_name: string | null
+  video_url: string | null
+  ficha_url: string | null
   created_at: string
 }
 
