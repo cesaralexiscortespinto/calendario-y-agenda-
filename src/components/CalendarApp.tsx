@@ -9,8 +9,10 @@ import { parseCronogramaImage } from '@/lib/parseCronogramaImage'
 import DayView from '@/components/DayView'
 import ControlPanel from '@/components/ControlPanel'
 import Informes from '@/components/Informes'
+import TmiLibrary from '@/components/TmiLibrary'
 import { PRESET_LOCATIONS } from '@/lib/locations'
 import { MATCH_TYPES, MATCH_TYPE_META, type MatchType } from '@/lib/matchTypes'
+import { MC_TITLE_RE, MC_PREFIX_RE } from '@/lib/tmiTitle'
 
 const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
@@ -50,8 +52,6 @@ interface ModalState {
   editing: CalendarEvent | null
 }
 
-const MC_TITLE_RE = /^MC(\d+)-S(\d+)$/i
-const MC_PREFIX_RE = /^MC(\d+)-S(\d+)\s*-\s*/i
 
 /**
  * Último entrenamiento con MC/S válido cuya fecha es `date` o anterior (partidos y otros
@@ -726,7 +726,7 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [passwordModalOpen, setPasswordModalOpen] = useState(false)
-  const [tab, setTab] = useState<'control' | 'agenda' | 'informes'>('agenda')
+  const [tab, setTab] = useState<'control' | 'agenda' | 'informes' | 'tmi'>('agenda')
   const [reports, setReports] = useState<Report[]>([])
 
   const [itineraryDates, setItineraryDates] = useState<Set<string>>(new Set())
@@ -891,7 +891,13 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
         <div>
           <p className="font-display text-[11px] font-bold uppercase tracking-widest text-ink-soft">Panel de trabajo</p>
           <h1 className="font-display text-2xl font-extrabold text-ink">
-            {tab === 'control' ? 'Control de actividades' : tab === 'agenda' ? 'Entrenamientos, partidos y viajes' : 'Informes'}
+            {tab === 'control'
+              ? 'Control de actividades'
+              : tab === 'agenda'
+                ? 'Entrenamientos, partidos y viajes'
+                : tab === 'tmi'
+                  ? 'Biblioteca de TMI'
+                  : 'Informes'}
           </h1>
         </div>
         <div className="flex items-center gap-4">
@@ -913,6 +919,7 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
           [
             ['control', 'Control de Actividades'],
             ['agenda', 'Agenda'],
+            ['tmi', 'TMI'],
             ['informes', 'Informes'],
           ] as const
         ).map(([key, label]) => (
@@ -930,6 +937,7 @@ export default function CalendarApp({ userId, userEmail }: { userId: string; use
       </div>
 
       {tab === 'control' && <ControlPanel events={events} reports={reports} />}
+      {tab === 'tmi' && <TmiLibrary events={events} />}
       {tab === 'informes' && <Informes userId={userId} reports={reports} onChanged={loadReports} />}
       {tab === 'agenda' && (
         <>
