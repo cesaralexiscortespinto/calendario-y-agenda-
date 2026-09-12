@@ -43,11 +43,20 @@ function getVideoDurationSeconds(file: File): Promise<number> {
   })
 }
 
+function bitrateForDuration(maxBytes: number, durationSeconds: number): number {
+  const targetTotalKbps = (maxBytes * 8 * SIZE_SAFETY_FACTOR) / durationSeconds / 1000
+  return Math.max(MIN_VIDEO_BITRATE_KBPS, Math.round(targetTotalKbps - AUDIO_BITRATE_KBPS))
+}
+
 /**
  * Si el video ya pesa menos que `maxBytes`, lo devuelve tal cual. Si no, lo comprime en el
  * navegador con ffmpeg.wasm apuntando al bitrate justo para caber en `maxBytes`, en vez de
  * aplicar una compresión fija: así se conserva la mayor calidad posible para ese límite de peso,
  * y solo se reduce la resolución si el original supera Full HD.
+ *
+ * Si la primera pasada igual queda por sobre `maxBytes` (duración no detectada de antemano, o
+ * variación propia del encoder), se corrige con una segunda pasada a un bitrate más bajo en vez
+ * de subir un archivo que Supabase va a rechazar por peso.
  */
 export async function compressVideoIfNeeded(
   file: File,
@@ -55,8 +64,6 @@ export async function compressVideoIfNeeded(
   onProgress?: (ratio: number) => void,
 ): Promise<File> {
   if (file.size <= maxBytes) return file
-
-  const durationSeconds = await getVideoDurationSeconds(file)
 
   const ffmpeg = await getFFmpeg()
   const ext = file.name.match(/\.\w+$/)?.[0] ?? '.mp4'
@@ -66,14 +73,9 @@ export async function compressVideoIfNeeded(
   const onFFmpegProgress = ({ progress }: { progress: number }) => onProgress?.(Math.min(1, Math.max(0, progress)))
   if (onProgress) ffmpeg.on('progress', onFFmpegProgress)
 
-  try {
-    await ffmpeg.writeFile(inputName, await fetchFile(file))
-
+  async function encode(videoBitrateKbps: number | null): Promise<File> {
     const args = ['-i', inputName, '-vf', `scale='min(${MAX_WIDTH},iw)':-2`, '-c:v', 'libx264']
-
-    if (durationSeconds > 0) {
-      const targetTotalKbps = (maxBytes * 8 * SIZE_SAFETY_FACTOR) / durationSeconds / 1000
-      const videoBitrateKbps = Math.max(MIN_VIDEO_BITRATE_KBPS, Math.round(targetTotalKbps - AUDIO_BITRATE_KBPS))
+    if (videoBitrateKbps) {
       args.push(
         '-b:v',
         `${videoBitrateKbps}k`,
@@ -86,16 +88,38 @@ export async function compressVideoIfNeeded(
       // No se pudo leer la duración: se recurre a un factor de calidad fijo como red de seguridad.
       args.push('-crf', '28')
     }
-
-    args.push('-preset', 'veryfast', '-c:a', 'aac', '-b:a', `${AUDIO_BITRATE_KBPS}k`, outputName)
+    args.push('-preset', 'veryfast', '-c:a', 'aac', '-b:a', `${AUDIO_BITRATE_KBPS}k`, '-y', outputName)
 
     await ffmpeg.exec(args)
     const data = await ffmpeg.readFile(outputName)
+    await ffmpeg.deleteFile(outputName).catch(() => {})
     const blob = new Blob([data as Uint8Array], { type: 'video/mp4' })
     return new File([blob], file.name.replace(/\.\w+$/, '.mp4'), { type: 'video/mp4' })
+  }
+
+  try {
+    await ffmpeg.writeFile(inputName, await fetchFile(file))
+
+    const sourceDuration = await getVideoDurationSeconds(file)
+    let result = await encode(sourceDuration > 0 ? bitrateForDuration(maxBytes, sourceDuration) : null)
+
+    if (result.size > maxBytes) {
+      const knownDuration = sourceDuration > 0 ? sourceDuration : await getVideoDurationSeconds(result)
+      if (knownDuration > 0) {
+        if (onProgress) onProgress(0)
+        const idealBitrate = bitrateForDuration(maxBytes, knownDuration)
+        // corrige además por el desvío observado en la primera pasada, no solo por la duración
+        const correctedBitrate = Math.max(
+          MIN_VIDEO_BITRATE_KBPS,
+          Math.round(idealBitrate * ((maxBytes * SIZE_SAFETY_FACTOR) / result.size)),
+        )
+        result = await encode(correctedBitrate)
+      }
+    }
+
+    return result
   } finally {
     if (onProgress) ffmpeg.off('progress', onFFmpegProgress)
     await ffmpeg.deleteFile(inputName).catch(() => {})
-    await ffmpeg.deleteFile(outputName).catch(() => {})
   }
 }

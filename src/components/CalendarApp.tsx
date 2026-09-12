@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase'
 import type { CalendarEvent, EventKind, Report } from '@/lib/database.types'
 import { CATEGORIES } from '@/lib/categories'
 import { buildICS, downloadICS, slugify } from '@/lib/calendarExport'
@@ -94,11 +94,43 @@ function findMcSForDate(events: CalendarEvent[], date: string): { mc: string; s:
   return findMcSForNewEntreno(events, date)
 }
 
-async function uploadTmiFile(userId: string, file: File): Promise<string> {
+async function uploadTmiFile(userId: string, file: File, onProgress?: (ratio: number) => void): Promise<string> {
   const ext = file.name.split('.').pop() || 'bin'
   const path = `${userId}/${crypto.randomUUID()}.${ext}`
-  const { error } = await supabase.storage.from('tmi-media').upload(path, file)
-  if (error) throw error
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${supabaseUrl}/storage/v1/object/tmi-media/${path}`)
+    xhr.setRequestHeader('Authorization', `Bearer ${session?.access_token ?? supabaseAnonKey}`)
+    xhr.setRequestHeader('apikey', supabaseAnonKey)
+    xhr.setRequestHeader('cache-control', '3600')
+    xhr.setRequestHeader('content-type', file.type || 'application/octet-stream')
+    xhr.upload.onprogress = (e) => {
+      if (onProgress && e.lengthComputable) onProgress(e.loaded / e.total)
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(1)
+        resolve()
+        return
+      }
+      let message = xhr.statusText || `Error ${xhr.status}`
+      try {
+        const parsed = JSON.parse(xhr.responseText)
+        message = parsed.message || parsed.error || message
+      } catch {
+        // respuesta no era JSON, se deja el mensaje por defecto
+      }
+      reject(new Error(message))
+    }
+    xhr.onerror = () => reject(new Error('No se pudo subir el archivo (error de red).'))
+    xhr.send(file)
+  })
+
   const { data } = supabase.storage.from('tmi-media').getPublicUrl(path)
   return data.publicUrl
 }
@@ -192,6 +224,8 @@ function EventModal({
   const [saving, setSaving] = useState(false)
   const [compressing, setCompressing] = useState(false)
   const [compressProgress, setCompressProgress] = useState(0)
+  const [uploadingVideo, setUploadingVideo] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -209,12 +243,16 @@ function EventModal({
           toUpload = await compressVideoIfNeeded(videoFile, MAX_UPLOAD_BYTES, setCompressProgress)
           setCompressing(false)
         }
-        finalVideoUrl = await uploadTmiFile(userId, toUpload)
+        setUploadingVideo(true)
+        setUploadProgress(0)
+        finalVideoUrl = await uploadTmiFile(userId, toUpload, setUploadProgress)
+        setUploadingVideo(false)
       }
       if (fichaFile) finalFichaUrl = await uploadTmiFile(userId, fichaFile)
     } catch (err) {
       setSaving(false)
       setCompressing(false)
+      setUploadingVideo(false)
       setError(err instanceof Error ? err.message : 'No se pudo subir el archivo.')
       return
     }
@@ -640,11 +678,13 @@ function EventModal({
             <button type="submit" disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white disabled:opacity-60">
               {compressing
                 ? `Comprimiendo video… ${Math.round(compressProgress * 100)}%`
-                : saving
-                  ? 'Guardando…'
-                  : ev
-                    ? 'Guardar cambios'
-                    : 'Añadir'}
+                : uploadingVideo
+                  ? `Subiendo video… ${Math.round(uploadProgress * 100)}%`
+                  : saving
+                    ? 'Guardando…'
+                    : ev
+                      ? 'Guardar cambios'
+                      : 'Añadir'}
             </button>
           </div>
         </form>
