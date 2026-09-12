@@ -14,13 +14,26 @@ function humanDate(iso: string) {
 function isImageUrl(url: string) {
   return /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(url.split('?')[0])
 }
-function filenameFromUrl(url: string, fallback: string) {
-  try {
-    const last = decodeURIComponent(new URL(url).pathname.split('/').pop() || '')
-    return last || fallback
-  } catch {
-    return fallback
-  }
+function slugifyForFilename(s: string) {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+/** Nombre de archivo descriptivo (MC-S, posición, objetivo) para que al descargar o compartir se sepa qué es sin abrirlo. */
+function buildTmiFilename(parsed: { mc: string; sesion: string; posicion: string; objetivo: string }, url: string, fallbackExt: string) {
+  const ext = url.split('?')[0].match(/\.(\w+)$/)?.[1]?.toLowerCase() || fallbackExt
+  const parts = [
+    parsed.mc && parsed.sesion ? `MC${parsed.mc}-S${parsed.sesion}` : null,
+    parsed.posicion,
+    parsed.objetivo,
+  ]
+    .filter((p): p is string => Boolean(p))
+    .map(slugifyForFilename)
+    .filter(Boolean)
+  return `${parts.join('-') || 'tmi'}.${ext}`
 }
 
 async function downloadFile(url: string, filename: string) {
@@ -71,7 +84,7 @@ function ShareButton({ url, title, label }: { url: string; title: string; label:
   )
 }
 
-function AssetRow({ url, filename, label }: { url: string; filename: string; label: string }) {
+function AssetRow({ url, filename, shareTitle, label }: { url: string; filename: string; shareTitle: string; label: string }) {
   return (
     <div className="flex items-center gap-2.5 text-[11px] font-bold">
       <span className="text-ink-soft">{label}</span>
@@ -81,7 +94,7 @@ function AssetRow({ url, filename, label }: { url: string; filename: string; lab
       <button type="button" onClick={() => downloadFile(url, filename)} className="text-ink-soft hover:underline">
         Descargar
       </button>
-      <ShareButton url={url} title={filename} label="Compartir" />
+      <ShareButton url={url} title={shareTitle} label="Compartir" />
     </div>
   )
 }
@@ -315,15 +328,29 @@ export default function TmiLibrary({ events }: { events: CalendarEvent[] }) {
 
               {(ev.video_url || ev.ficha_url) && (
                 <div className="mt-auto flex flex-col gap-1 border-t border-line pt-2">
-                  {ev.video_url && <AssetRow url={ev.video_url} filename={filenameFromUrl(ev.video_url, 'video.mp4')} label="Video" />}
-                  {ev.ficha_url && <AssetRow url={ev.ficha_url} filename={filenameFromUrl(ev.ficha_url, 'ficha.pdf')} label="Ficha" />}
+                  {ev.video_url && (
+                    <AssetRow
+                      url={ev.video_url}
+                      filename={buildTmiFilename(parsed, ev.video_url, 'mp4')}
+                      shareTitle={`${parsed.posicion || 'TMI'}${parsed.objetivo ? ' - ' + parsed.objetivo : ''}`}
+                      label="Video"
+                    />
+                  )}
+                  {ev.ficha_url && (
+                    <AssetRow
+                      url={ev.ficha_url}
+                      filename={buildTmiFilename(parsed, ev.ficha_url, 'pdf')}
+                      shareTitle={`${parsed.posicion || 'TMI'}${parsed.objetivo ? ' - ' + parsed.objetivo : ''} (ficha)`}
+                      label="Ficha"
+                    />
+                  )}
                   {ev.video_url && ev.ficha_url && (
                     <button
                       type="button"
                       onClick={() =>
                         downloadFiles([
-                          { url: ev.video_url!, filename: filenameFromUrl(ev.video_url!, 'video.mp4') },
-                          { url: ev.ficha_url!, filename: filenameFromUrl(ev.ficha_url!, 'ficha.pdf') },
+                          { url: ev.video_url!, filename: buildTmiFilename(parsed, ev.video_url!, 'mp4') },
+                          { url: ev.ficha_url!, filename: buildTmiFilename(parsed, ev.ficha_url!, 'pdf') },
                         ])
                       }
                       className="mt-0.5 text-left text-[11px] font-bold text-accent hover:underline"
