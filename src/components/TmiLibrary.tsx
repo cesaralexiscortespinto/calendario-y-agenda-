@@ -40,6 +40,13 @@ async function downloadFile(url: string, filename: string) {
   }
 }
 
+async function downloadFiles(files: { url: string; filename: string }[]) {
+  for (const f of files) {
+    await downloadFile(f.url, f.filename)
+    await new Promise((r) => setTimeout(r, 300))
+  }
+}
+
 function ShareButton({ url, title, label }: { url: string; title: string; label: string }) {
   const [copied, setCopied] = useState(false)
 
@@ -310,6 +317,20 @@ export default function TmiLibrary({ events }: { events: CalendarEvent[] }) {
                 <div className="mt-auto flex flex-col gap-1 border-t border-line pt-2">
                   {ev.video_url && <AssetRow url={ev.video_url} filename={filenameFromUrl(ev.video_url, 'video.mp4')} label="Video" />}
                   {ev.ficha_url && <AssetRow url={ev.ficha_url} filename={filenameFromUrl(ev.ficha_url, 'ficha.pdf')} label="Ficha" />}
+                  {ev.video_url && ev.ficha_url && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        downloadFiles([
+                          { url: ev.video_url!, filename: filenameFromUrl(ev.video_url!, 'video.mp4') },
+                          { url: ev.ficha_url!, filename: filenameFromUrl(ev.ficha_url!, 'ficha.pdf') },
+                        ])
+                      }
+                      className="mt-0.5 text-left text-[11px] font-bold text-accent hover:underline"
+                    >
+                      Descargar video + ficha
+                    </button>
+                  )}
                 </div>
               )}
             </div>
