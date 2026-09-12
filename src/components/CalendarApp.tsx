@@ -13,6 +13,7 @@ import TmiLibrary from '@/components/TmiLibrary'
 import { PRESET_LOCATIONS } from '@/lib/locations'
 import { MATCH_TYPES, MATCH_TYPE_META, type MatchType } from '@/lib/matchTypes'
 import { MC_TITLE_RE, MC_PREFIX_RE } from '@/lib/tmiTitle'
+import { compressVideoIfNeeded, MAX_UPLOAD_BYTES } from '@/lib/compressVideo'
 
 const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
@@ -189,6 +190,8 @@ function EventModal({
   const [videoUrl, setVideoUrl] = useState(ev?.video_url ?? null)
   const [fichaUrl, setFichaUrl] = useState(ev?.ficha_url ?? null)
   const [saving, setSaving] = useState(false)
+  const [compressing, setCompressing] = useState(false)
+  const [compressProgress, setCompressProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -198,10 +201,20 @@ function EventModal({
     let finalVideoUrl = videoUrl
     let finalFichaUrl = fichaUrl
     try {
-      if (videoFile) finalVideoUrl = await uploadTmiFile(userId, videoFile)
+      if (videoFile) {
+        let toUpload = videoFile
+        if (videoFile.size > MAX_UPLOAD_BYTES) {
+          setCompressing(true)
+          setCompressProgress(0)
+          toUpload = await compressVideoIfNeeded(videoFile, MAX_UPLOAD_BYTES, setCompressProgress)
+          setCompressing(false)
+        }
+        finalVideoUrl = await uploadTmiFile(userId, toUpload)
+      }
       if (fichaFile) finalFichaUrl = await uploadTmiFile(userId, fichaFile)
     } catch (err) {
       setSaving(false)
+      setCompressing(false)
       setError(err instanceof Error ? err.message : 'No se pudo subir el archivo.')
       return
     }
@@ -565,6 +578,9 @@ function EventModal({
                   onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
                   className="w-full min-w-0 rounded-lg border border-line bg-paper px-2 py-2 text-xs text-ink outline-none file:mr-1.5 file:rounded-md file:border-0 file:bg-line file:px-1.5 file:py-1 file:text-xs file:font-bold focus:border-accent"
                 />
+                {videoFile && videoFile.size > MAX_UPLOAD_BYTES && (
+                  <span className="text-[10px] text-ink-soft">Se comprimirá automáticamente al guardar (pesa más de 45 MB).</span>
+                )}
               </label>
 
               <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
@@ -622,7 +638,13 @@ function EventModal({
               <span />
             )}
             <button type="submit" disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-xs font-bold text-white disabled:opacity-60">
-              {saving ? 'Guardando…' : ev ? 'Guardar cambios' : 'Añadir'}
+              {compressing
+                ? `Comprimiendo video… ${Math.round(compressProgress * 100)}%`
+                : saving
+                  ? 'Guardando…'
+                  : ev
+                    ? 'Guardar cambios'
+                    : 'Añadir'}
             </button>
           </div>
         </form>
