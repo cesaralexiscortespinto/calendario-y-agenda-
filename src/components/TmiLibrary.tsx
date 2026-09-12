@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import '@/lib/pdfjsSetup'
+import { getDocument } from 'pdfjs-dist'
 import type { CalendarEvent } from '@/lib/database.types'
 import { CATEGORIES } from '@/lib/categories'
 import { parseTmiTitle } from '@/lib/tmiTitle'
@@ -73,6 +75,80 @@ function AssetRow({ url, filename, label }: { url: string; filename: string; lab
         Descargar
       </button>
       <ShareButton url={url} title={filename} label="Compartir" />
+    </div>
+  )
+}
+
+const pdfThumbCache = new Map<string, string>()
+
+/** Dibuja la primera página del PDF de la ficha en un canvas y la muestra como imagen. */
+function PdfFichaThumbnail({ url }: { url: string }) {
+  const [thumb, setThumb] = useState<string | null>(() => pdfThumbCache.get(url) ?? null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    if (thumb) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const pdf = await getDocument({ url }).promise
+        const page = await pdf.getPage(1)
+        const viewport = page.getViewport({ scale: 1.2 })
+        const canvas = document.createElement('canvas')
+        canvas.width = viewport.width
+        canvas.height = viewport.height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) throw new Error('sin contexto de canvas')
+        await page.render({ canvasContext: ctx, viewport }).promise
+        const dataUrl = canvas.toDataURL('image/png')
+        pdfThumbCache.set(url, dataUrl)
+        if (!cancelled) setThumb(dataUrl)
+      } catch {
+        if (!cancelled) setFailed(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [url, thumb])
+
+  if (failed) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-ink-soft">
+        <span className="text-2xl">📄</span>
+        <span className="text-[10px] font-bold uppercase tracking-wide">Ver ficha (PDF)</span>
+      </div>
+    )
+  }
+  if (!thumb) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">Cargando ficha…</span>
+      </div>
+    )
+  }
+  return <img src={thumb} alt="Ficha del ejercicio" className="h-full w-full object-cover object-top" />
+}
+
+function CardVisual({ ev }: { ev: CalendarEvent }) {
+  if (ev.ficha_url) {
+    return (
+      <a href={ev.ficha_url} target="_blank" rel="noopener noreferrer" className="block h-full w-full">
+        {isImageUrl(ev.ficha_url) ? (
+          <img src={ev.ficha_url} alt="Ficha del ejercicio" className="h-full w-full object-cover" />
+        ) : (
+          <PdfFichaThumbnail url={ev.ficha_url} />
+        )}
+      </a>
+    )
+  }
+  if (ev.video_url) {
+    return <video src={ev.video_url} controls preload="metadata" className="h-full w-full object-cover" />
+  }
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-ink-soft">
+      <span className="text-3xl">⚽</span>
+      <span className="text-[10px] font-bold uppercase tracking-wide">Sin ficha ni video</span>
     </div>
   )
 }
@@ -200,60 +276,43 @@ export default function TmiLibrary({ events }: { events: CalendarEvent[] }) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tmis.map(({ ev, parsed }) => (
-          <div key={ev.id} className="flex flex-col gap-3 rounded-2xl border border-line bg-paper-raised p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-2">
-              <div>
+          <div key={ev.id} className="flex flex-col overflow-hidden rounded-2xl border border-line bg-paper-raised shadow-sm">
+            <div className="relative aspect-[4/3] w-full bg-line">
+              <CardVisual ev={ev} />
+              <span
+                className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow"
+                style={{ backgroundColor: parsed.momento === 'Ofensivo' ? 'rgba(180,90,20,0.85)' : 'rgba(40,60,110,0.85)' }}
+              >
+                {parsed.momento}
+              </span>
+            </div>
+
+            <div className="flex flex-1 flex-col gap-2 p-4">
+              <div className="flex items-start justify-between gap-2">
                 <p className="font-display text-[10px] font-bold uppercase tracking-widest text-ink-soft">
                   {parsed.mc && parsed.sesion ? `MC${parsed.mc}-S${parsed.sesion}` : 'Sin MC/S'} · {humanDate(ev.date)}
                 </p>
-                <span
-                  className="mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-                  style={{
-                    color: parsed.momento === 'Ofensivo' ? 'var(--color-partido)' : 'var(--color-viaje)',
-                    backgroundColor: parsed.momento === 'Ofensivo' ? 'var(--color-partido-soft)' : 'var(--color-viaje-soft)',
-                  }}
-                >
-                  {parsed.momento}
-                </span>
+                {ev.category && <span className="shrink-0 text-[10px] font-bold text-ink-soft">{ev.category}</span>}
               </div>
-              {ev.category && <span className="shrink-0 text-[10px] font-bold text-ink-soft">{ev.category}</span>}
-            </div>
 
-            <div>
-              <p className="text-sm font-bold text-ink">{parsed.posicion || 'Sin posición'}</p>
-              {parsed.objetivo && <p className="text-xs text-ink-soft">{parsed.objetivo}</p>}
-            </div>
-
-            {ev.video_url && (
-              <video src={ev.video_url} controls preload="metadata" className="w-full rounded-lg border border-line bg-black" />
-            )}
-
-            {ev.ficha_url &&
-              (isImageUrl(ev.ficha_url) ? (
-                <a href={ev.ficha_url} target="_blank" rel="noopener noreferrer">
-                  <img src={ev.ficha_url} alt="Ficha del ejercicio" className="w-full rounded-lg border border-line object-cover" />
-                </a>
-              ) : (
-                <a
-                  href={ev.ficha_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 rounded-lg border border-line bg-paper px-3 py-2 text-xs font-bold text-accent hover:underline"
-                >
-                  📄 Ver ficha (PDF)
-                </a>
-              ))}
-
-            {!ev.video_url && !ev.ficha_url && <p className="text-xs text-ink-soft">Sin video ni ficha adjunta.</p>}
-
-            {(ev.video_url || ev.ficha_url) && (
-              <div className="flex flex-col gap-1 border-t border-line pt-2">
-                {ev.video_url && <AssetRow url={ev.video_url} filename={filenameFromUrl(ev.video_url, 'video.mp4')} label="Video" />}
-                {ev.ficha_url && <AssetRow url={ev.ficha_url} filename={filenameFromUrl(ev.ficha_url, 'ficha.pdf')} label="Ficha" />}
+              <div>
+                <p className="text-sm font-extrabold uppercase tracking-tight text-ink">{parsed.posicion || 'Sin posición'}</p>
+                {parsed.objetivo && <p className="line-clamp-2 text-xs text-ink-soft">{parsed.objetivo}</p>}
               </div>
-            )}
+
+              {ev.ficha_url && ev.video_url && (
+                <video src={ev.video_url} controls preload="metadata" className="w-full rounded-lg border border-line bg-black" />
+              )}
+
+              {(ev.video_url || ev.ficha_url) && (
+                <div className="mt-auto flex flex-col gap-1 border-t border-line pt-2">
+                  {ev.video_url && <AssetRow url={ev.video_url} filename={filenameFromUrl(ev.video_url, 'video.mp4')} label="Video" />}
+                  {ev.ficha_url && <AssetRow url={ev.ficha_url} filename={filenameFromUrl(ev.ficha_url, 'ficha.pdf')} label="Ficha" />}
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
