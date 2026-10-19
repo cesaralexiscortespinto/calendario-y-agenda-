@@ -93,7 +93,7 @@ export async function compressVideoIfNeeded(
     await ffmpeg.exec(args)
     const data = await ffmpeg.readFile(outputName)
     await ffmpeg.deleteFile(outputName).catch(() => {})
-    const blob = new Blob([data as Uint8Array], { type: 'video/mp4' })
+    const blob = new Blob([new Uint8Array(data as Uint8Array)], { type: 'video/mp4' })
     return new File([blob], file.name.replace(/\.\w+$/, '.mp4'), { type: 'video/mp4' })
   }
 
